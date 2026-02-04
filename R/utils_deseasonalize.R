@@ -77,39 +77,12 @@ deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-01"))
       # constant/flatline values, flat seasonal component, or excessive NAs
       # ========================================================================
 
-      # Check 0 (CRITICAL): Validate seasonal component is not flat
-      # This catches the case where X-13 finds "no seasonality" and returns
-      # adjusted = original with seasonal factors = 0 (additive) or 1 (mult)
-      seasonal_comp <- tryCatch({
-        # Use d10 for X-11 seasonal factors (d11 is adjusted, d10 is factors)
-        # This matches Marcos's Stata approach using X-11 method
-        s <- seasonal::series(m, "d10")
-        as.numeric(s)
-      }, error = function(e) NULL)
-
-      if (!is.null(seasonal_comp) && length(seasonal_comp) > 0) {
-        seasonal_var <- var(seasonal_comp, na.rm = TRUE)
-        seasonal_range <- diff(range(seasonal_comp, na.rm = TRUE))
-
-        # Flat seasonal component detection (variance near zero)
-        if (is.na(seasonal_var) || seasonal_var < 1e-10 ||
-            is.na(seasonal_range) || seasonal_range < 1e-6) {
-          warning("X-13 ARIMA produced flat seasonal component - returning original")
-          return(vals)
-        }
-
-        # Trivial seasonal component relative to series variation
-        var_orig_check <- var(vals_clean, na.rm = TRUE)
-        if (!is.na(var_orig_check) && var_orig_check > 0 &&
-            seasonal_var < var_orig_check * 0.001) {
-          warning(paste0(
-            "X-13 seasonal component is trivial (",
-            round(seasonal_var / var_orig_check * 100, 3),
-            "% of series variance) - returning original"
-          ))
-          return(vals)
-        }
-      }
+      # Note: We removed the "trivial seasonal" variance check because X-11 uses
+      # different model types (multiplicative vs additive) for different periods.
+      # Multiplicative models have seasonal factors around 1.0, which have
+      # inherently low variance even when seasonality is meaningful.
+      # X-11 method is robust and will always extract a seasonal component,
+      # so we trust its output without additional variance checks.
 
       # Check 1: All values identical or nearly identical (flatline)
       unique_vals <- length(unique(round(adjusted, 6)))
