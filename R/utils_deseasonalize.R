@@ -18,7 +18,7 @@ forecast_available <- requireNamespace("forecast", quietly = TRUE)
 #' @param dates Date vector corresponding to values
 #' @param split_date Date to split series (IBGE questionnaire change)
 #' @return Seasonally adjusted values (same length as input)
-deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-15")) {
+deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-01")) {
 
   if (!seasonal_available) {
     warning("Package 'seasonal' not available. Returning original values.")
@@ -68,32 +68,69 @@ deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-15"))
       # ========================================================================
       # VALIDATION: Detect silent X-13 failures
       # X-13 can produce degenerate models that return without error but have
-      # constant/flatline values or excessive NAs
+      # constant/flatline values, flat seasonal component, or excessive NAs
       # ========================================================================
+
+      # Check 0 (CRITICAL): Validate seasonal component is not flat
+      # This catches the case where X-13 finds "no seasonality" and returns
+      # adjusted = original with seasonal factors = 0 (additive) or 1 (mult)
+      seasonal_comp <- tryCatch({
+        # Try SEATS seasonal component first (s10), then X-11 (d10)
+        s <- seasonal::series(m, "s10")
+        if (is.null(s)) s <- seasonal::series(m, "d10")
+        as.numeric(s)
+      }, error = function(e) NULL)
+
+      if (!is.null(seasonal_comp) && length(seasonal_comp) > 0) {
+        seasonal_var <- var(seasonal_comp, na.rm = TRUE)
+        seasonal_range <- diff(range(seasonal_comp, na.rm = TRUE))
+
+        # Flat seasonal component detection (variance near zero)
+        if (is.na(seasonal_var) || seasonal_var < 1e-10 ||
+            is.na(seasonal_range) || seasonal_range < 1e-6) {
+          warning("X-13 ARIMA produced flat seasonal component - returning original")
+          return(vals)
+        }
+
+        # Trivial seasonal component relative to series variation
+        var_orig_check <- var(vals_clean, na.rm = TRUE)
+        if (!is.na(var_orig_check) && var_orig_check > 0 &&
+            seasonal_var < var_orig_check * 0.001) {
+          warning(paste0(
+            "X-13 seasonal component is trivial (",
+            round(seasonal_var / var_orig_check * 100, 3),
+            "% of series variance) - returning original"
+          ))
+          return(vals)
+        }
+      }
 
       # Check 1: All values identical or nearly identical (flatline)
       unique_vals <- length(unique(round(adjusted, 6)))
       if (unique_vals <= 3) {
-        warning("X-13 ARIMA produced constant/near-constant values (flatline) - returning original")
+        warning("X-13 ARIMA produced constant adjusted values - returning original")
         return(vals)
       }
 
       # Check 2: Too many NAs in output
       na_ratio <- sum(is.na(adjusted)) / length(adjusted)
       if (na_ratio > 0.1) {
-        warning(paste0("X-13 ARIMA produced too many NAs (", round(na_ratio * 100, 1),
-                       "%) - returning original"))
+        warning(paste0(
+          "X-13 ARIMA produced too many NAs (",
+          round(na_ratio * 100, 1), "%) - returning original"
+        ))
         return(vals)
       }
 
       # Check 3: Variance anomaly - adjusted variance should be roughly similar
-      # to original (within reasonable bounds). If variance is extremely low,
-      # it indicates a degenerate model.
+      # to original (within reasonable bounds)
       var_orig <- var(vals_clean, na.rm = TRUE)
       var_adj <- var(adjusted, na.rm = TRUE)
       if (var_orig > 0 && (var_adj < var_orig / 100 || var_adj > var_orig * 100)) {
-        warning(paste0("X-13 ARIMA variance anomaly (orig=", round(var_orig, 2),
-                       ", adj=", round(var_adj, 2), ") - returning original"))
+        warning(paste0(
+          "X-13 ARIMA variance anomaly (orig=", round(var_orig, 2),
+          ", adj=", round(var_adj, 2), ") - returning original"
+        ))
         return(vals)
       }
 
@@ -105,7 +142,7 @@ deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-15"))
   }
 
   # Period 1: Before questionnaire change (if we have data)
-  if (!is.null(split_idx) && split_idx > 1) {
+  if (!is.na(split_idx) && split_idx > 1) {
     idx1 <- 1:(split_idx - 1)
     vals1 <- values_ord[idx1]
     adjusted1 <- process_period(vals1, dates_ord[1])
@@ -113,12 +150,12 @@ deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-15"))
   }
 
   # Period 2: After questionnaire change (main period)
-  if (!is.null(split_idx) && split_idx <= length(values_ord)) {
+  if (!is.na(split_idx) && split_idx <= length(values_ord)) {
     idx2 <- split_idx:length(values_ord)
     vals2 <- values_ord[idx2]
     adjusted2 <- process_period(vals2, dates_ord[split_idx])
     result[ord[idx2]] <- adjusted2
-  } else if (is.null(split_idx)) {
+  } else if (is.na(split_idx)) {
     # All data is before split (or split_idx is beyond data)
     adjusted <- process_period(values_ord, dates_ord[1])
     result[ord] <- adjusted
