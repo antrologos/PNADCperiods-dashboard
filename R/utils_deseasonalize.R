@@ -9,10 +9,14 @@ seasonal_available <- requireNamespace("seasonal", quietly = TRUE)
 forecast_available <- requireNamespace("forecast", quietly = TRUE)
 
 # ==============================================================================
-# X-13 ARIMA-SEATS Wrapper
+# X-13 ARIMA with X-11 Method (following Marcos Hecksher)
 # ==============================================================================
 
-#' Apply X-13 ARIMA-SEATS seasonal adjustment
+#' Apply X-13 ARIMA seasonal adjustment using X-11 method
+#'
+#' Uses X-11 decomposition method (not SEATS) following Marcos Hecksher's
+#' original Stata implementation which uses sax12 with satype(single) and
+#' extracts d11 (the X-11 seasonally adjusted series).
 #'
 #' @param values Numeric vector of monthly values
 #' @param dates Date vector corresponding to values
@@ -60,9 +64,11 @@ deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-01"))
 
     ts_obj <- ts(vals_clean, frequency = 12, start = c(start_year, start_month))
 
-    # Apply X-13 ARIMA-SEATS
+    # Apply X-13 ARIMA with X-11 method (following Marcos Hecksher's approach)
+    # Using x11 = "" forces X-11 decomposition instead of SEATS
+    # This matches Marcos's Stata: sax12 var, satype(single) / sax12im var, ext(d11)
     tryCatch({
-      m <- seasonal::seas(ts_obj)
+      m <- seasonal::seas(ts_obj, x11 = "")
       adjusted <- as.numeric(seasonal::final(m))
 
       # ========================================================================
@@ -75,9 +81,9 @@ deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-01"))
       # This catches the case where X-13 finds "no seasonality" and returns
       # adjusted = original with seasonal factors = 0 (additive) or 1 (mult)
       seasonal_comp <- tryCatch({
-        # Try SEATS seasonal component first (s10), then X-11 (d10)
-        s <- seasonal::series(m, "s10")
-        if (is.null(s)) s <- seasonal::series(m, "d10")
+        # Use d10 for X-11 seasonal factors (d11 is adjusted, d10 is factors)
+        # This matches Marcos's Stata approach using X-11 method
+        s <- seasonal::series(m, "d10")
         as.numeric(s)
       }, error = function(e) NULL)
 
