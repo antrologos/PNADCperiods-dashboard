@@ -90,18 +90,10 @@ seriesExplorerUI <- function(id) {
 
       tags$hr(style = "margin: 0.75rem 0;"),
 
-      # Date range
+      # Date range (dynamic UI for proper i18n formatting)
       div(
         style = "padding: 0 5px;",  # Extra padding for slider labels
-        sliderInput(
-          ns("date_range"),
-          label = tags$span(style = "font-size: 0.75rem; font-weight: 600;",
-                            textOutput(ns("label_date_range"), inline = TRUE)),
-          min = as.Date("2012-03-01"),
-          max = Sys.Date(),
-          value = c(as.Date("2012-03-01"), Sys.Date()),
-          timeFormat = "%Y-%m"
-        )
+        uiOutput(ns("date_range_ui"))
       ),
 
       tags$hr(style = "margin: 0.75rem 0;"),
@@ -157,13 +149,14 @@ seriesExplorerUI <- function(id) {
         div(
           class = "card-header bg-white d-flex justify-content-between align-items-center",
           style = "padding: 0.75rem 1rem; border-bottom: 1px solid #eee;",
-          tags$h6(class = "mb-0", style = "font-weight: 600; font-size: 0.9rem;",
-                  textOutput(ns("plot_title"), inline = TRUE)),
-          popover(
-            icon("info-circle", class = "text-muted", style = "font-size: 0.9rem; cursor: pointer;"),
-            title = "Series Info",
-            textOutput(ns("series_description"))
-          )
+          div(
+            tags$h6(class = "mb-0", style = "font-weight: 600; font-size: 0.9rem;",
+                    textOutput(ns("plot_title"), inline = TRUE)),
+            tags$small(class = "text-muted",
+                       style = "font-size: 0.75rem;",
+                       textOutput(ns("plot_subtitle"), inline = TRUE))
+          ),
+          uiOutput(ns("series_info_popover"))
         ),
         div(
           class = "card-body",
@@ -384,7 +377,143 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     output$show_table_ui <- renderUI({
       lang_val <- get_lang()
       label_text <- if (lang_val == "en") "Show" else "Ver"
-      checkboxInput(session$ns("show_table"), label_text, value = isolate(input$show_table) %||% FALSE, width = "auto")
+      checkboxInput(session$ns("show_table"), label_text,
+                    value = isolate(input$show_table) %||% FALSE, width = "auto")
+    })
+
+    # --------------------------------------------------------------------------
+    # Dynamic UI: Series info popover (for i18n title)
+    # --------------------------------------------------------------------------
+
+    output$series_info_popover <- renderUI({
+      lang_val <- get_lang()
+      popover(
+        icon("info-circle", class = "text-muted",
+             style = "font-size: 0.9rem; cursor: pointer;"),
+        title = i18n("data_panel.series_info", lang_val),
+        textOutput(session$ns("series_description"))
+      )
+    })
+
+    # --------------------------------------------------------------------------
+    # Dynamic UI: Date range selection (year-month dropdowns)
+    # --------------------------------------------------------------------------
+
+    # Reactive values to track date range state
+    date_range_state <- reactiveValues(
+      available_months = NULL,  # Vector of YYYYMM integers
+      start_month = NULL,
+      end_month = NULL
+    )
+
+    # Generate month choices with i18n labels
+    generate_month_choices <- function(months_yyyymm, lang) {
+      if (is.null(months_yyyymm) || length(months_yyyymm) == 0) {
+        return(character(0))
+      }
+
+      # Sort months
+      months_sorted <- sort(unique(months_yyyymm))
+
+      # Generate labels
+      labels <- sapply(months_sorted, function(m) {
+        format_date_i18n(m, lang, format = "short")
+      })
+
+      setNames(as.character(months_sorted), labels)
+    }
+
+    output$date_range_ui <- renderUI({
+      lang_val <- get_lang()
+      months <- isolate(date_range_state$available_months)
+
+      if (is.null(months) || length(months) == 0) {
+        return(NULL)
+      }
+
+      choices <- generate_month_choices(months, lang_val)
+      start_val <- isolate(date_range_state$start_month)
+      end_val <- isolate(date_range_state$end_month)
+
+      # Ensure values are valid
+      if (is.null(start_val) || !as.character(start_val) %in% choices) {
+        start_val <- names(choices)[1]
+      }
+      if (is.null(end_val) || !as.character(end_val) %in% choices) {
+        end_val <- names(choices)[length(choices)]
+      }
+
+      tagList(
+        tags$label(
+          style = "font-size: 0.75rem; font-weight: 600;",
+          toupper(i18n("controls.date_range", lang_val))
+        ),
+        div(
+          class = "d-flex gap-2 align-items-center",
+          style = "margin-top: 5px;",
+          div(
+            style = "flex: 1;",
+            selectInput(
+              session$ns("date_start"),
+              label = NULL,
+              choices = choices,
+              selected = start_val,
+              width = "100%"
+            )
+          ),
+          tags$span("—", style = "color: #6c757d;"),
+          div(
+            style = "flex: 1;",
+            selectInput(
+              session$ns("date_end"),
+              label = NULL,
+              choices = choices,
+              selected = end_val,
+              width = "100%"
+            )
+          )
+        )
+      )
+    })
+
+    # Update available months when data changes
+    observeEvent(shared_data$monthly_sidra, {
+      dt <- shared_data$monthly_sidra
+      if (!is.null(dt)) {
+        months <- sort(unique(dt$anomesexato))
+        date_range_state$available_months <- months
+        date_range_state$start_month <- min(months)
+        date_range_state$end_month <- max(months)
+      }
+    }, ignoreNULL = TRUE)
+
+    # Track user changes to preserve across language switches
+    observeEvent(input$date_start, {
+      if (!is.null(input$date_start)) {
+        date_range_state$start_month <- as.integer(input$date_start)
+      }
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$date_end, {
+      if (!is.null(input$date_end)) {
+        date_range_state$end_month <- as.integer(input$date_end)
+      }
+    }, ignoreInit = TRUE)
+
+    # Computed date range (for filtering)
+    date_range <- reactive({
+      start <- input$date_start
+      end <- input$date_end
+
+      if (is.null(start) || is.null(end)) {
+        return(NULL)
+      }
+
+      # Convert YYYYMM to Date
+      start_date <- yyyymm_to_date(as.integer(start))
+      end_date <- yyyymm_to_date(as.integer(end))
+
+      c(start_date, end_date)
     })
 
     # --------------------------------------------------------------------------
@@ -415,7 +544,81 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     })
 
     # --------------------------------------------------------------------------
-    # Reactive: Update theme choices
+    # Reactive: Update dropdown labels when language changes
+    # --------------------------------------------------------------------------
+
+    observeEvent(get_lang(), {
+      metadata <- shared_data$series_metadata
+      if (is.null(metadata)) return()
+
+      lang_val <- get_lang()
+
+      # Get current selections to preserve them
+      current_theme <- isolate(input$theme)
+      current_category <- isolate(input$theme_category)
+      current_series <- isolate(input$series)
+
+      # Update theme dropdown with new language labels
+      themes <- get_theme_choices(metadata, lang_val)
+      updateSelectInput(
+        session, "theme",
+        choices = themes,
+        selected = if (!is.null(current_theme) && current_theme %in% themes) {
+          current_theme
+        } else if ("labor_market" %in% themes) {
+          "labor_market"
+        } else {
+          themes[1]
+        }
+      )
+
+      # Update category dropdown if theme is selected
+      if (!is.null(current_theme) && current_theme != "") {
+        category_choices <- get_theme_category_choices(metadata, current_theme, lang_val)
+        if (length(category_choices) > 0) {
+          updateSelectInput(
+            session, "theme_category",
+            choices = category_choices,
+            selected = if (!is.null(current_category) && current_category %in% category_choices) {
+              current_category
+            } else {
+              category_choices[1]
+            }
+          )
+        }
+      }
+
+      # Update series dropdown if category is selected
+      if (!is.null(current_theme) && !is.null(current_category) &&
+          current_theme != "" && current_category != "") {
+        subcat <- isolate(input$subcategory)
+        series_choices <- get_series_choices(metadata, current_theme, current_category, subcat, lang_val)
+
+        # Filter to only available series
+        if (!is.null(shared_data$monthly_sidra) && length(series_choices) > 0) {
+          dt_cols <- names(shared_data$monthly_sidra)
+          available_series <- vapply(series_choices, function(s) {
+            paste0("m_", s) %in% dt_cols || s %in% dt_cols
+          }, FUN.VALUE = logical(1))
+          series_choices <- series_choices[available_series]
+        }
+
+        if (length(series_choices) > 0) {
+          updateSelectInput(
+            session, "series",
+            choices = series_choices,
+            selected = if (!is.null(current_series) && current_series %in% series_choices) {
+              current_series
+            } else {
+              series_choices[1]
+            }
+          )
+        }
+      }
+    }, ignoreInit = TRUE)
+
+    # --------------------------------------------------------------------------
+    # Reactive: Update theme choices (initial load)
     # --------------------------------------------------------------------------
 
     observe({
@@ -428,7 +631,7 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
           selected = if ("labor_market" %in% themes) "labor_market" else themes[1]
         )
       }
-    })
+    }) |> bindEvent(shared_data$series_metadata, once = TRUE)
 
     # --------------------------------------------------------------------------
     # Reactive: Check if metadata uses new hierarchical structure
@@ -513,7 +716,12 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     # Reactive: Update series choices based on hierarchy (new structure only)
     # --------------------------------------------------------------------------
 
-    observeEvent(list(input$theme, input$theme_category, input$subcategory), {
+    # NOTE: This observer should NOT observe input$theme directly!
+    # When theme changes, the category dropdown is updated first.
+    # This observer should only fire when category/subcategory change.
+    # Observing theme causes a race condition where this fires before
+    # theme_category is updated, leading to wrong series selections.
+    observeEvent(list(input$theme_category, input$subcategory), {
       # Only run if using new hierarchical structure
       req(uses_new_structure())
 
@@ -563,17 +771,24 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
       req(shared_data$monthly_sidra)
       dt <- shared_data$monthly_sidra
 
-      # Get date range from data
-      dates <- yyyymm_to_date(dt$anomesexato)
-      min_date <- min(dates, na.rm = TRUE)
-      max_date <- max(dates, na.rm = TRUE)
+      # Get month range from data (YYYYMM integers)
+      months <- sort(unique(dt$anomesexato))
 
-      updateSliderInput(
-        session, "date_range",
-        min = min_date,
-        max = max_date,
-        value = c(min_date, max_date)
-      )
+      # Update the date range state to full range for new series
+      date_range_state$available_months <- months
+      date_range_state$start_month <- min(months)
+      date_range_state$end_month <- max(months)
+
+      # Update the dropdowns directly for immediate feedback
+      lang_val <- get_lang()
+      choices <- generate_month_choices(months, lang_val)
+
+      updateSelectInput(session, "date_start",
+                        choices = choices,
+                        selected = as.character(min(months)))
+      updateSelectInput(session, "date_end",
+                        choices = choices,
+                        selected = as.character(max(months)))
 
       # Reset seasonal adjustment to None
       updateRadioButtons(session, "deseasonalize", selected = "none")
@@ -638,8 +853,11 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         }
       }
 
-      # Filter by date range
-      result <- result[date >= input$date_range[1] & date <= input$date_range[2]]
+      # Filter by date range (using the computed date_range reactive)
+      dr <- date_range()
+      if (!is.null(dr) && length(dr) == 2) {
+        result <- result[date >= dr[1] & date <= dr[2]]
+      }
 
       # Calculate difference (before de-seasonalization)
       if ("quarterly" %in% names(result)) {
@@ -694,13 +912,53 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     })
 
     # --------------------------------------------------------------------------
-    # Output: Plot title (uses i18n for series description)
+    # Reactive: Plot title text (explicit dependencies for reliable updates)
+    # --------------------------------------------------------------------------
+
+    plot_title_text <- reactive({
+      req(input$series)
+      lang_val <- get_lang()  # Explicit reactive dependency
+      metadata <- shared_data$series_metadata
+      desc <- get_series_description(metadata, input$series, lang_val)
+      # DEBUG: Print to console to verify reactive is firing
+      message("[DEBUG plot_title_text] series=", input$series, " -> ", substr(desc, 1, 30))
+      desc
+    })
+
+    # --------------------------------------------------------------------------
+    # Reactive: Plot subtitle text (explicit dependencies)
+    # --------------------------------------------------------------------------
+
+    plot_subtitle_text <- reactive({
+      req(input$series)
+      series_name <- input$series
+      lang_val <- get_lang()  # Explicit reactive dependency
+
+      # Check if this is a "real" (deflated) series
+      is_real <- grepl("real", series_name, ignore.case = TRUE)
+
+      if (is_real) {
+        ref_date <- if (lang_val == "en") "Dec/2024" else "Dez/2024"
+        sprintf(i18n("plots.deflation_ref", lang_val), ref_date)
+      } else {
+        ""
+      }
+    })
+
+    # --------------------------------------------------------------------------
+    # Output: Plot title (uses reactive for proper dependency tracking)
     # --------------------------------------------------------------------------
 
     output$plot_title <- renderText({
-      req(input$series)
-      metadata <- shared_data$series_metadata
-      get_series_description(metadata, input$series, get_lang())
+      plot_title_text()
+    })
+
+    # --------------------------------------------------------------------------
+    # Output: Plot subtitle (uses reactive for proper dependency tracking)
+    # --------------------------------------------------------------------------
+
+    output$plot_subtitle <- renderText({
+      plot_subtitle_text()
     })
 
     # --------------------------------------------------------------------------
@@ -781,56 +1039,59 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
 
       deseason_method <- input$deseasonalize
 
+      # Get current language for labels
+      lang_val <- get_lang()
+
       # Handle de-seasonalization display
       if (!is.null(deseason_method) && deseason_method == "both") {
         # Compare both methods: show original as faded background
         p <- p %>% add_lines(
           y = ~monthly,
-          name = "Monthly Original",
+          name = i18n("plots.monthly_original", lang_val),
           line = list(color = ibge_colors$gray, width = 1.5),
           opacity = 0.7
         )
         p <- p %>% add_lines(
           y = ~monthly_x13,
-          name = "Monthly Adjusted (X-13 ARIMA)",
+          name = i18n("plots.monthly_adjusted_x13", lang_val),
           line = list(color = ibge_colors$primary, width = 2)
         )
         p <- p %>% add_lines(
           y = ~monthly_stl,
-          name = "Monthly Adjusted (STL)",
+          name = i18n("plots.monthly_adjusted_stl", lang_val),
           line = list(color = "#4CAF50", width = 2)
         )
       } else if (!is.null(deseason_method) && deseason_method == "x13") {
         # X-13 ARIMA method: show both original and adjusted
         p <- p %>% add_lines(
           y = ~monthly,
-          name = "Monthly Original",
+          name = i18n("plots.monthly_original", lang_val),
           line = list(color = ibge_colors$gray, width = 1.5, dash = "dot"),
           opacity = 0.7
         )
         p <- p %>% add_lines(
           y = ~monthly_x13,
-          name = "Monthly Adjusted (X-13 ARIMA)",
+          name = i18n("plots.monthly_adjusted_x13", lang_val),
           line = list(color = ibge_colors$secondary, width = 2)
         )
       } else if (!is.null(deseason_method) && deseason_method == "stl") {
         # STL method: show both original and adjusted
         p <- p %>% add_lines(
           y = ~monthly,
-          name = "Monthly Original",
+          name = i18n("plots.monthly_original", lang_val),
           line = list(color = ibge_colors$gray, width = 1.5, dash = "dot"),
           opacity = 0.7
         )
         p <- p %>% add_lines(
           y = ~monthly_stl,
-          name = "Monthly Adjusted (STL)",
+          name = i18n("plots.monthly_adjusted_stl", lang_val),
           line = list(color = ibge_colors$secondary, width = 2)
         )
       } else {
         # No de-seasonalization: show monthly series normally
         p <- p %>% add_lines(
           y = ~monthly,
-          name = "Monthly",
+          name = i18n("plots.monthly", lang_val),
           line = list(color = ibge_colors$secondary, width = 2)
         )
       }
@@ -840,17 +1101,44 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
           (is.null(deseason_method) || deseason_method == "none")) {
         p <- p %>% add_lines(
           y = ~quarterly,
-          name = "Quarterly",
+          name = i18n("plots.quarterly", lang_val),
           line = list(color = ibge_colors$gray, width = 2, dash = "dash")
         )
+      }
+
+      # Get tick format and locale separators based on series unit type
+      series_unit <- get_series_unit(shared_data$series_metadata, input$series)
+      tick_fmt <- get_plotly_tickformat(series_unit, lang_val)
+      separators <- get_plotly_separators(lang_val)
+
+      # Build y-axis config
+      yaxis_config <- list(
+        title = "",
+        tickfont = list(size = 10),
+        tickformat = tick_fmt,
+        hoverformat = tick_fmt
+      )
+
+      # Add R$ prefix for currency series (including currency_millions)
+      if (series_unit %in% c("currency", "currency_millions")) {
+        yaxis_config$tickprefix <- "R$ "
+      }
+
+      # Add % suffix for percent series
+      if (series_unit == "percent") {
+        yaxis_config$ticksuffix <- "%"
+        # Remove % from tickformat since we're adding suffix
+        yaxis_config$tickformat <- ",.1f"
       }
 
       # Configure layout
       p %>% layout(
         xaxis = list(title = "", tickfont = list(size = 10)),
-        yaxis = list(title = "", tickfont = list(size = 10)),
+        yaxis = yaxis_config,
+        separators = separators,  # Locale-specific decimal/thousands separators
         hovermode = "x unified",
-        legend = list(orientation = "h", y = 1.08, x = 0.5, xanchor = "center", font = list(size = 10)),
+        legend = list(orientation = "h", y = 1.08, x = 0.5,
+                      xanchor = "center", font = list(size = 10)),
         margin = list(t = 30, b = 40, l = 50, r = 20),
         paper_bgcolor = "white",
         plot_bgcolor = "white"
@@ -860,12 +1148,12 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     })
 
     # --------------------------------------------------------------------------
-    # Output: Difference plot title (dynamic based on seasonal adjustment)
+    # Reactive: Difference plot title text (explicit dependencies)
     # --------------------------------------------------------------------------
 
-    output$difference_plot_title <- renderText({
+    difference_title_text <- reactive({
       deseason_method <- input$deseasonalize
-      lang_val <- get_lang()
+      lang_val <- get_lang()  # Explicit reactive dependency
 
       if (is.null(deseason_method) || deseason_method == "none") {
         if (lang_val == "en") "Difference: Monthly - Quarterly" else "Diferença: Mensal - Trimestral"
@@ -878,6 +1166,14 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
       } else {
         if (lang_val == "en") "Difference" else "Diferença"
       }
+    })
+
+    # --------------------------------------------------------------------------
+    # Output: Difference plot title (uses reactive for proper dependency tracking)
+    # --------------------------------------------------------------------------
+
+    output$difference_plot_title <- renderText({
+      difference_title_text()
     })
 
     # --------------------------------------------------------------------------
@@ -903,10 +1199,13 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         dt_plot <- dt[!is.na(difference)]
         validate(need(nrow(dt_plot) > 0, "No difference data in selected date range"))
 
+        # Get current language for labels
+        lang_val <- get_lang()
+
         p <- plot_ly(dt_plot, x = ~date) %>%
           add_lines(
             y = ~difference,
-            name = "Monthly - Quarterly",
+            name = i18n("plots.monthly_minus_quarterly", lang_val),
             line = list(color = ibge_colors$primary, width = 1.5),
             fill = "tozeroy",
             fillcolor = "rgba(25, 118, 210, 0.15)"
@@ -922,10 +1221,13 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         dt_plot <- dt[!is.na(monthly_x13)]
         dt_plot[, seasonal_x13 := monthly - monthly_x13]
 
+        # Get current language for labels
+        lang_val <- get_lang()
+
         p <- plot_ly(dt_plot, x = ~date) %>%
           add_lines(
             y = ~seasonal_x13,
-            name = "Seasonal (X-13)",
+            name = i18n("plots.seasonal_x13", lang_val),
             line = list(color = ibge_colors$primary, width = 1.5),
             fill = "tozeroy",
             fillcolor = "rgba(25, 118, 210, 0.15)"
@@ -941,10 +1243,13 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         dt_plot <- dt[!is.na(monthly_stl)]
         dt_plot[, seasonal_stl := monthly - monthly_stl]
 
+        # Get current language for labels
+        lang_val <- get_lang()
+
         p <- plot_ly(dt_plot, x = ~date) %>%
           add_lines(
             y = ~seasonal_stl,
-            name = "Seasonal (STL)",
+            name = i18n("plots.seasonal_stl", lang_val),
             line = list(color = "#4CAF50", width = 1.5),
             fill = "tozeroy",
             fillcolor = "rgba(76, 175, 80, 0.15)"
@@ -965,37 +1270,68 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
           dt_plot[, seasonal_stl := monthly - monthly_stl]
         }
 
+        # Get current language for labels
+        lang_val <- get_lang()
+
         p <- plot_ly(dt_plot, x = ~date)
 
         if ("seasonal_x13" %in% names(dt_plot)) {
           p <- p %>% add_lines(
             y = ~seasonal_x13,
-            name = "X-13 ARIMA",
+            name = i18n("plots.x13_arima", lang_val),
             line = list(color = ibge_colors$primary, width = 1.5)
           )
         }
         if ("seasonal_stl" %in% names(dt_plot)) {
           p <- p %>% add_lines(
             y = ~seasonal_stl,
-            name = "STL",
+            name = i18n("plots.stl", lang_val),
             line = list(color = "#4CAF50", width = 1.5)
           )
         }
       }
 
+      # Get tick format and locale separators based on series unit type
+      lang_val <- get_lang()
+      series_unit <- get_series_unit(shared_data$series_metadata, input$series)
+      tick_fmt <- get_plotly_tickformat(series_unit, lang_val)
+      separators <- get_plotly_separators(lang_val)
+
+      # Build y-axis config
+      yaxis_config <- list(
+        title = "",
+        tickfont = list(size = 10),
+        tickformat = tick_fmt,
+        hoverformat = tick_fmt
+      )
+
+      # Add R$ prefix for currency series (including currency_millions)
+      if (series_unit %in% c("currency", "currency_millions")) {
+        yaxis_config$tickprefix <- "R$ "
+      }
+
+      # Add % suffix for percent series
+      if (series_unit == "percent") {
+        yaxis_config$ticksuffix <- "%"
+        yaxis_config$tickformat <- ",.1f"
+      }
+
       # Common layout
       p %>% layout(
         xaxis = list(title = "", tickfont = list(size = 10)),
-        yaxis = list(title = "", tickfont = list(size = 10)),
+        yaxis = yaxis_config,
+        separators = separators,  # Locale-specific decimal/thousands separators
         hovermode = "x unified",
         showlegend = (deseason_method == "both"),
-        legend = list(orientation = "h", y = 1.1, x = 0.5, xanchor = "center", font = list(size = 9)),
+        legend = list(orientation = "h", y = 1.1, x = 0.5,
+                      xanchor = "center", font = list(size = 9)),
         margin = list(t = 10, b = 30, l = 50, r = 20),
         paper_bgcolor = "white",
         plot_bgcolor = "white",
         shapes = list(
           list(type = "line", x0 = min(dt_plot$date), x1 = max(dt_plot$date),
-               y0 = 0, y1 = 0, line = list(color = ibge_colors$gray, dash = "dash", width = 1))
+               y0 = 0, y1 = 0,
+               line = list(color = ibge_colors$gray, dash = "dash", width = 1))
         )
       ) %>%
         config(displayModeBar = FALSE)
@@ -1005,34 +1341,54 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     # Output: Summary statistics
     # --------------------------------------------------------------------------
 
+    # Helper to get current series unit
+    get_current_unit <- reactive({
+      req(input$series)
+      metadata <- shared_data$series_metadata
+      get_series_unit(metadata, input$series)
+    })
+
     output$stat_min <- renderText({
       req(filtered_data())
       dt <- filtered_data()
-      format_br(min(dt$monthly, na.rm = TRUE))
+      format_series_value(min(dt$monthly, na.rm = TRUE),
+                          unit = get_current_unit(),
+                          lang = get_lang(),
+                          include_unit = FALSE)
     })
 
     output$stat_max <- renderText({
       req(filtered_data())
       dt <- filtered_data()
-      format_br(max(dt$monthly, na.rm = TRUE))
+      format_series_value(max(dt$monthly, na.rm = TRUE),
+                          unit = get_current_unit(),
+                          lang = get_lang(),
+                          include_unit = FALSE)
     })
 
     output$stat_mean <- renderText({
       req(filtered_data())
       dt <- filtered_data()
-      format_br(mean(dt$monthly, na.rm = TRUE))
+      format_series_value(mean(dt$monthly, na.rm = TRUE),
+                          unit = get_current_unit(),
+                          lang = get_lang(),
+                          include_unit = FALSE)
     })
 
     output$stat_latest <- renderText({
       req(filtered_data())
       dt <- filtered_data()
       latest <- dt[which.max(date), monthly]
-      format_br(latest)
+      format_series_value(latest,
+                          unit = get_current_unit(),
+                          lang = get_lang(),
+                          include_unit = FALSE)
     })
 
     output$stat_yoy <- renderText({
       req(filtered_data())
       dt <- filtered_data()
+      lang_val <- get_lang()
 
       # Get latest and value from 12 months ago
       dt <- dt[order(date)]
@@ -1050,7 +1406,9 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
 
       if (length(yoy_val) > 0 && !is.na(yoy_val) && !is.na(latest_val) && yoy_val != 0) {
         change <- (latest_val - yoy_val) / yoy_val * 100
-        paste0(ifelse(change > 0, "+", ""), format_br(change), "%")
+        # YoY change is always a percentage
+        formatted <- format_number_i18n(change, digits = 1, lang = lang_val)
+        paste0(ifelse(change > 0, "+", ""), formatted, "%")
       } else {
         "N/A"
       }
@@ -1125,10 +1483,9 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     # Download: PNG
     # --------------------------------------------------------------------------
 
-    # Helper to get plot title (uses i18n)
+    # Helper to get plot title (uses the reactive for consistency)
     get_plot_title <- function() {
-      metadata <- shared_data$series_metadata
-      get_series_description(metadata, input$series, get_lang())
+      plot_title_text()
     }
 
     output$download_png <- downloadHandler(

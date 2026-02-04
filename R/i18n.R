@@ -115,7 +115,8 @@ translations <- list(
     adjusted_stl = list(en = "Adjusted (STL)", pt = "Ajustado (STL)"),
     difference = list(en = "Difference", pt = "Diferença"),
     year = list(en = "Year", pt = "Ano"),
-    month = list(en = "Month", pt = "Mês")
+    month = list(en = "Month", pt = "Mês"),
+    series_info = list(en = "Series Info", pt = "Informação da Série")
   ),
 
   # ============================================================================
@@ -134,7 +135,23 @@ translations <- list(
       pt = "Fonte: IBGE/PNAD Contínua, mensalizado pelo PNADCperiods"
     ),
     axis_date = list(en = "Date", pt = "Data"),
-    axis_value = list(en = "Value", pt = "Valor")
+    axis_value = list(en = "Value", pt = "Valor"),
+    # Deflation reference note
+    deflation_ref = list(
+      en = "Real values (deflated to %s)",
+      pt = "Valores reais (deflacionados para %s)"
+    ),
+    # Plot line labels (legend names)
+    monthly_original = list(en = "Monthly Original", pt = "Mensal Original"),
+    monthly_adjusted_x13 = list(en = "Monthly Adjusted (X-13 ARIMA)", pt = "Mensal Ajustado (X-13 ARIMA)"),
+    monthly_adjusted_stl = list(en = "Monthly Adjusted (STL)", pt = "Mensal Ajustado (STL)"),
+    monthly = list(en = "Monthly", pt = "Mensal"),
+    quarterly = list(en = "Quarterly", pt = "Trimestral"),
+    monthly_minus_quarterly = list(en = "Monthly - Quarterly", pt = "Mensal - Trimestral"),
+    seasonal_x13 = list(en = "Seasonal (X-13)", pt = "Sazonal (X-13)"),
+    seasonal_stl = list(en = "Seasonal (STL)", pt = "Sazonal (STL)"),
+    x13_arima = list(en = "X-13 ARIMA", pt = "X-13 ARIMA"),
+    stl = list(en = "STL", pt = "STL")
   ),
 
   # ============================================================================
@@ -174,7 +191,8 @@ translations <- list(
     underutilization = list(en = "Underutilization", pt = "Subutilização"),
     employment_type = list(en = "Employment Type", pt = "Tipo de Ocupação"),
     economic_sector = list(en = "Economic Sector", pt = "Setor Econômico"),
-    # Earnings
+    # Earnings (restructured: average + wage_mass with usual/effective subcategories)
+    average = list(en = "Average Earnings", pt = "Rendimento Médio"),
     average_usual = list(en = "Average Usual Earnings", pt = "Rendimento Médio Habitual"),
     average_effective = list(en = "Average Effective Earnings", pt = "Rendimento Médio Efetivo"),
     wage_mass = list(en = "Wage Mass", pt = "Massa Salarial"),
@@ -370,16 +388,19 @@ get_subcategory_label <- function(subcategory_code, lang = "pt") {
 #' Returns the appropriate description column based on language.
 #'
 #' @param metadata Series metadata data.table from get_sidra_series_metadata()
-#' @param series_name Name of the series
+#' @param series_id Name/ID of the series (renamed from series_name to avoid
+#'   data.table column name scoping conflict)
 #' @param lang Language code: "en" or "pt"
-#' @return Description string, or series_name if not found
+#' @return Description string, or series_id if not found
 #'
 #' @export
-get_series_description <- function(metadata, series_name, lang = "pt") {
-  if (is.null(metadata)) return(series_name)
+get_series_description <- function(metadata, series_id, lang = "pt") {
+  if (is.null(metadata)) return(series_id)
 
-  row <- metadata[metadata$series_name == series_name, ]
-  if (nrow(row) == 0) return(series_name)
+  # Use explicit variable to avoid data.table column name scoping conflict
+  target_series <- series_id
+  row <- metadata[metadata[["series_name"]] == target_series, ]
+  if (nrow(row) == 0) return(series_id)
 
   col <- if (lang == "en") "description_en" else "description_pt"
   if (col %in% names(row) && !is.na(row[[col]][1])) {
@@ -391,7 +412,7 @@ get_series_description <- function(metadata, series_name, lang = "pt") {
     return(row$description_pt[1])
   }
 
-  return(series_name)
+  return(series_id)
 }
 
 
@@ -655,4 +676,145 @@ format_number_i18n <- function(x, digits = 1, lang = "pt") {
     # English format: 1,234.5
     formatC(x, format = "f", digits = digits, big.mark = ",", decimal.mark = ".")
   }
+}
+
+
+#' Format series value based on unit type and language
+#'
+#' Formats values appropriately based on series unit type:
+#' - percent: 1 decimal, % suffix
+#' - millions/levels: 0 decimals, thousands separator
+#' - currency: R$ prefix, 2 decimals
+#' - index: 2 decimals
+#'
+#' @param x Numeric value
+#' @param unit Unit type: "percent", "millions", "currency", "index", "people"
+#' @param lang Language code: "en" or "pt"
+#' @param include_unit Whether to include unit suffix/prefix
+#' @return Formatted string
+#'
+#' @export
+format_series_value <- function(x, unit = "millions", lang = "pt",
+                                include_unit = TRUE) {
+  if (is.na(x)) return(NA_character_)
+
+  # Determine formatting based on unit type
+  if (unit == "percent") {
+    # Rates: 1 decimal place
+    formatted <- format_number_i18n(x, digits = 1, lang = lang)
+    if (include_unit) {
+      formatted <- paste0(formatted, "%")
+    }
+  } else if (unit %in% c("millions", "people")) {
+    # Population/levels: no decimals, thousands separator
+    formatted <- format_number_i18n(x, digits = 0, lang = lang)
+    if (include_unit && unit == "millions") {
+      unit_label <- if (lang == "en") " million" else " milhões"
+      formatted <- paste0(formatted, unit_label)
+    }
+  } else if (unit %in% c("currency", "currency_millions")) {
+    # Currency: R$ prefix, no decimals for display
+    formatted <- format_number_i18n(x, digits = 0, lang = lang)
+    if (include_unit) {
+      formatted <- paste0("R$ ", formatted)
+    }
+  } else if (unit == "index") {
+    # Index: 2 decimals
+    formatted <- format_number_i18n(x, digits = 2, lang = lang)
+  } else {
+    # Default: 1 decimal
+    formatted <- format_number_i18n(x, digits = 1, lang = lang)
+  }
+
+  formatted
+}
+
+
+#' Get unit type for a series from metadata
+#'
+#' @param metadata Series metadata data.table
+#' @param series_name Name of the series
+#' @return Unit type string (default: "millions")
+#'
+#' @export
+get_series_unit <- function(metadata, series_name) {
+  if (is.null(metadata)) return("millions")
+
+  row <- metadata[metadata$series_name == series_name, ]
+  if (nrow(row) == 0) return("millions")
+
+  if ("unit" %in% names(row) && !is.na(row$unit[1])) {
+    return(row$unit[1])
+  }
+
+  # Fallback: infer from series name
+  if (grepl("^taxa|^perc|^nivel", series_name, ignore.case = TRUE)) {
+    return("percent")
+  } else if (grepl("^rend|^rhr|massa", series_name, ignore.case = TRUE)) {
+    return("currency")
+  } else if (grepl("^ipca|^inpc", series_name, ignore.case = TRUE)) {
+    return("index")
+  }
+
+  return("millions")
+}
+
+
+#' Get plotly tickformat for a series unit type
+#'
+#' Returns D3 format string for plotly tick labels.
+#' Note: Use with separators parameter in layout for proper locale.
+#'
+#' @param unit Unit type
+#' @param lang Language code (not used for format, but kept for API consistency)
+#' @return D3 format string
+#'
+#' @export
+get_plotly_tickformat <- function(unit = "millions", lang = "pt") {
+
+  # D3 format strings - separators are handled by layout(separators=...)
+  if (unit == "percent") {
+    ",.1f"  # 1 decimal for percentages
+  } else if (unit %in% c("millions", "people")) {
+    ",.0f"  # No decimals for population/levels
+  } else if (unit %in% c("currency", "currency_millions")) {
+    ",.0f"  # No decimals for currency (R$ values are typically shown as integers)
+  } else if (unit == "index") {
+    ",.2f"  # 2 decimals for indices
+  } else {
+    ",.1f"  # Default: 1 decimal
+  }
+}
+
+
+#' Get plotly separators string for locale
+#'
+#' Returns the separators parameter for plotly layout.
+#' Format: "decimal_sep thousands_sep" (2 characters)
+#'
+#' @param lang Language code: "en" or "pt"
+#' @return Separators string for plotly layout
+#'
+#' @export
+get_plotly_separators <- function(lang = "pt") {
+  if (lang == "pt") {
+    ",."  # Portuguese: comma for decimal, dot for thousands
+  } else {
+    ".,"  # English: period for decimal, comma for thousands
+  }
+}
+
+
+#' Get plotly hoverformat for a series unit type
+#'
+#' Returns D3 format string for plotly hover labels
+#'
+#' @param unit Unit type
+#' @param lang Language code
+#' @return D3 format string
+#'
+#' @export
+get_plotly_hoverformat <- function(unit = "millions", lang = "pt") {
+  # Same as tickformat
+  get_plotly_tickformat(unit, lang)
 }

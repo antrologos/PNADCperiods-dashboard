@@ -89,7 +89,10 @@ load_app_data <- function() {
     rolling_quarters = NULL,
     series_metadata = NULL,
     deseasonalized_cache = NULL,
-    last_updated = NULL
+    last_updated = NULL,
+    # Geographic data (Phase 3)
+    geographic_data = NULL,
+    geo_last_updated = NULL
   )
 
   # Load series metadata
@@ -123,6 +126,13 @@ load_app_data <- function() {
   deseason_path <- file.path(data_dir, "deseasonalized_cache.rds")
   if (file.exists(deseason_path)) {
     app_data$deseasonalized_cache <- readRDS(deseason_path)
+  }
+
+  # Load geographic data (Phase 3)
+  geo_path <- file.path(data_dir, "geographic_data.rds")
+  if (file.exists(geo_path)) {
+    app_data$geographic_data <- readRDS(geo_path)
+    app_data$geo_last_updated <- file.mtime(geo_path)
   }
 
   app_data

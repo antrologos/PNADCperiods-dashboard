@@ -5,7 +5,7 @@ Interactive Shiny dashboard for exploring mensalized Brazilian labor market seri
 ## Features
 
 - **Series Explorer**: Interactive visualization of 86 mensalized SIDRA series
-- **Geographic Maps**: Labor market indicators by state (coming soon)
+- **Geographic Analysis**: Labor market indicators by state (UF) with interactive bar chart
 - **Inequality Analysis**: Gini, Lorenz curves, Growth Incidence Curves (coming soon)
 - **Poverty Analysis**: FGT indices with World Bank poverty lines (coming soon)
 
@@ -24,7 +24,15 @@ remotes::install_github("antrologos/PNADCperiods")
 
 ```r
 setwd("path/to/PNADCperiods-dashboard")
+
+# Series Explorer data (national mensalized series)
 source("scripts/precompute_sidra.R")
+
+# Geographic data (state-level indicators)
+source("scripts/precompute_geographic.R")
+
+# Or for testing without SIDRA API:
+source("scripts/generate_sample_geographic_data.R")
 ```
 
 ### 3. Run the app

@@ -7,6 +7,7 @@ source("global.R")
 
 # Source modules
 source("R/mod_series_explorer.R")
+source("R/mod_geographic.R")
 source("R/mod_about.R")
 
 # ==============================================================================
@@ -64,17 +65,12 @@ ui <- page_navbar(
     seriesExplorerUI("explorer")
   ),
 
- # Tab 2: Geographic (placeholder)
+ # Tab 2: Geographic Analysis
   nav_panel(
     title = textOutput("nav_geographic", inline = TRUE),
     value = "geographic",
     icon = bs_icon("map"),
-    card(
-      card_header(textOutput("header_geographic", inline = TRUE)),
-      card_body(
-        textOutput("placeholder_geographic")
-      )
-    )
+    geographicUI("geographic")
   ),
 
   # Tab 3: Inequality (placeholder)
@@ -171,19 +167,9 @@ server <- function(input, output, session) {
   output$nav_poverty <- renderText({ i18n("nav.poverty", current_lang()) })
   output$nav_about <- renderText({ i18n("nav.about", current_lang()) })
 
-  # Placeholder tab headers
-  output$header_geographic <- renderText({ i18n("geographic.title", current_lang()) })
+  # Placeholder tab headers (remaining placeholders)
   output$header_inequality <- renderText({ i18n("inequality.title", current_lang()) })
   output$header_poverty <- renderText({ i18n("poverty.title", current_lang()) })
-
-  # Placeholder tab content
-  output$placeholder_geographic <- renderText({
-    if (current_lang() == "en") {
-      "Geographic visualization will be implemented in Phase 3. This tab will show all labor market indicators by state (UF)."
-    } else {
-      "A visualização geográfica será implementada na Fase 3. Esta aba mostrará todos os indicadores do mercado de trabalho por estado (UF)."
-    }
-  })
 
   output$placeholder_inequality <- renderText({
     if (current_lang() == "en") {
@@ -211,7 +197,10 @@ server <- function(input, output, session) {
     rolling_quarters = app_data$rolling_quarters,
     series_metadata = app_data$series_metadata,
     deseasonalized_cache = app_data$deseasonalized_cache,
-    last_updated = app_data$last_updated
+    last_updated = app_data$last_updated,
+    # Geographic data (Phase 3)
+    geographic_data = app_data$geographic_data,
+    geo_last_updated = app_data$geo_last_updated
   )
 
   # --------------------------------------------------------------------------
@@ -220,6 +209,9 @@ server <- function(input, output, session) {
 
   # Series Explorer module
   seriesExplorerServer("explorer", shared_data, lang = current_lang)
+
+  # Geographic Analysis module (Phase 3)
+  geographicServer("geographic", shared_data, lang = current_lang)
 
   # About module
   aboutServer("about", shared_data)
