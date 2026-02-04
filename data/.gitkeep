@@ -1,0 +1,2 @@
+# This file keeps the data directory in git.
+# Data files (*.rds) are excluded - regenerate with scripts/precompute_sidra.R

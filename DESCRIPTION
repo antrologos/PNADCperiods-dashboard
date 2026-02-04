@@ -1,0 +1,33 @@
+Type: ShinyApp
+Title: PNADCperiods Dashboard
+Version: 0.1.0
+Authors@R: c(
+    person("Rogerio", "Barbosa", email = "antrologos@gmail.com", role = c("aut", "cre")),
+    person("Marcos", "Hecksher", role = "aut", comment = "Methodology")
+  )
+Description: Interactive Shiny dashboard for exploring mensalized PNADC labor
+    market series, geographic visualizations, inequality analysis, and poverty
+    measurement using the PNADCperiods package methodology.
+License: MIT
+Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
+Imports:
+    shiny (>= 1.8.0),
+    bslib (>= 0.6.0),
+    data.table (>= 1.14.0),
+    ggplot2 (>= 3.4.0),
+    plotly (>= 4.10.0),
+    DT (>= 0.30),
+    bsicons,
+    shinyjs,
+    PNADCperiods
+Suggests:
+    seasonal,
+    forecast,
+    sf,
+    geobr,
+    ineq,
+    sidrar,
+    deflateBR,
+    openxlsx

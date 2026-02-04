@@ -1,0 +1,44 @@
+# ==============================================================================
+# PNADCperiods Dashboard - .gitignore
+# ==============================================================================
+
+# R session files
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Large data files (regenerate with scripts/precompute_sidra.R)
+data/*.rds
+
+# But keep the data directory structure
+!data/.gitkeep
+
+# R package cache
+packrat/
+renv/
+renv.lock
+
+# Shiny logs
+*.log
+rsconnect/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+.Rcheck/
+
+# Test output
+tests/testthat/_snaps/
