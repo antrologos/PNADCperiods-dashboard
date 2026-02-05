@@ -2,6 +2,10 @@
 # PNADCperiods Dashboard - .gitignore
 # ==============================================================================
 
+# Credentials - NEVER commit
+.Renviron
+.httr-oauth
+
 # R session files
 .Rhistory
 .RData
