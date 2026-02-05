@@ -52,32 +52,68 @@ uf_mapping <- data.table::data.table(
 )
 
 # Geographic indicator definitions (monthly estimates from microdata)
+# Organized hierarchically: theme -> theme_category -> indicator
 geographic_indicators <- data.table::data.table(
   indicator_id = c(
-    # Labor market rates
-    "taxadesocup", "taxapartic", "nivelocup",
-    "taxasubocuphoras", "taxainformal", "taxacontribprev",
-    # Population levels (in thousands)
-    "pop14mais", "pea", "employed", "unemployed", "fora_forca",
-    # Employment by type (in thousands)
+    # Labor market > Unemployment
+    "taxadesocup", "unemployed",
+    # Labor market > Participation
+    "taxapartic", "nivelocup", "pea", "employed",
+    # Labor market > Underutilization
+    "taxasubocuphoras", "taxainformal",
+    # Labor market > Employment type
     "empregpriv", "empregpubl", "domestico", "empregador", "contapropria",
-    # Employment by sector (in thousands)
-    "agropecuaria", "industria", "construcao", "comercio", "servicos"
+    # Labor market > Economic sector
+    "agropecuaria", "industria", "construcao", "comercio", "servicos",
+    # Demographics > Working age
+    "pop14mais", "fora_forca",
+    # Social protection > Social security
+    "taxacontribprev"
+  ),
+  theme = c(
+    # Unemployment
+    rep("labor_market", 2),
+    # Participation
+    rep("labor_market", 4),
+    # Underutilization
+    rep("labor_market", 2),
+    # Employment type
+    rep("labor_market", 5),
+    # Economic sector
+    rep("labor_market", 5),
+    # Demographics
+    rep("demographics", 2),
+    # Social protection
+    "social_protection"
+  ),
+  theme_category = c(
+    # Unemployment
+    rep("unemployment", 2),
+    # Participation
+    rep("participation", 4),
+    # Underutilization
+    rep("underutilization", 2),
+    # Employment type
+    rep("employment_type", 5),
+    # Economic sector
+    rep("economic_sector", 5),
+    # Demographics
+    rep("working_age", 2),
+    # Social protection
+    "social_security"
   ),
   description_pt = c(
-    # Labor market rates
+    # Unemployment
     "Taxa de desocupacao",
+    "Populacao desocupada",
+    # Participation
     "Taxa de participacao na forca de trabalho",
     "Nivel de ocupacao",
-    "Taxa de subocupacao por insuficiencia de horas",
-    "Taxa de informalidade",
-    "Taxa de contribuicao previdenciaria",
-    # Population levels
-    "Populacao de 14 anos ou mais",
     "Forca de trabalho (PEA)",
     "Populacao ocupada",
-    "Populacao desocupada",
-    "Fora da forca de trabalho",
+    # Underutilization
+    "Taxa de subocupacao por insuficiencia de horas",
+    "Taxa de informalidade",
     # Employment by type
     "Empregados setor privado",
     "Empregados setor publico",
@@ -89,22 +125,25 @@ geographic_indicators <- data.table::data.table(
     "Industria",
     "Construcao",
     "Comercio",
-    "Servicos"
+    "Servicos",
+    # Demographics
+    "Populacao de 14 anos ou mais",
+    "Fora da forca de trabalho",
+    # Social protection
+    "Taxa de contribuicao previdenciaria"
   ),
   description_en = c(
-    # Labor market rates
+    # Unemployment
     "Unemployment rate",
+    "Unemployed population",
+    # Participation
     "Labor force participation rate",
     "Employment-population ratio",
-    "Time-related underemployment rate",
-    "Informality rate",
-    "Social security contribution rate",
-    # Population levels
-    "Population aged 14 and over",
     "Labor force",
     "Employed population",
-    "Unemployed population",
-    "Not in labor force",
+    # Underutilization
+    "Time-related underemployment rate",
+    "Informality rate",
     # Employment by type
     "Private sector employees",
     "Public sector employees",
@@ -116,19 +155,87 @@ geographic_indicators <- data.table::data.table(
     "Industry",
     "Construction",
     "Commerce",
-    "Services"
+    "Services",
+    # Demographics
+    "Population aged 14 and over",
+    "Not in labor force",
+    # Social protection
+    "Social security contribution rate"
   ),
   unit = c(
-    rep("percent", 6),
-    rep("thousands", 15)
+    # Unemployment: rate, level
+    "percent", "thousands",
+    # Participation: rate, rate, level, level
+    "percent", "percent", "thousands", "thousands",
+    # Underutilization: rate, rate
+    "percent", "percent",
+    # Employment type: all levels
+    rep("thousands", 5),
+    # Economic sector: all levels
+    rep("thousands", 5),
+    # Demographics: all levels
+    rep("thousands", 2),
+    # Social protection: rate
+    "percent"
   ),
   color_scale = c(
-    # Rates: Reds for unemployment/negative, Blues/Greens for positive
-    "Reds", "Blues", "Greens", "Oranges", "Purples", "Blues",
-    # Levels: use sequential scales
-    rep("Blues", 15)
+    # Unemployment
+    "Reds", "Reds",
+    # Participation
+    "Blues", "Greens", "Blues", "Greens",
+    # Underutilization
+    "Oranges", "Purples",
+    # Employment type
+    rep("Blues", 5),
+    # Economic sector
+    rep("Greens", 5),
+    # Demographics
+    rep("Blues", 2),
+    # Social protection
+    "Blues"
   )
 )
+
+# ==============================================================================
+# Geographic Indicator Helper Functions (analogous to i18n.R series functions)
+# ==============================================================================
+
+#' Get geographic theme choices for dropdown
+#' @keywords internal
+get_geo_theme_choices <- function(lang = "pt") {
+  themes <- unique(geographic_indicators$theme)
+  labels <- sapply(themes, function(t) get_theme_label(t, lang))
+  setNames(themes, labels)
+}
+
+#' Get geographic category choices for dropdown
+#' @keywords internal
+get_geo_category_choices <- function(selected_theme, lang = "pt") {
+  if (is.null(selected_theme) || selected_theme == "") return(character(0))
+
+  filtered <- geographic_indicators[theme == selected_theme]
+  if (nrow(filtered) == 0) return(character(0))
+
+  categories <- unique(filtered$theme_category)
+  labels <- sapply(categories, function(c) get_theme_category_label(c, lang))
+  setNames(categories, labels)
+}
+
+#' Get geographic indicator choices for dropdown
+#' @keywords internal
+get_geo_indicator_choices <- function(selected_theme, selected_category, lang = "pt") {
+  if (is.null(selected_theme) || selected_theme == "" ||
+      is.null(selected_category) || selected_category == "") {
+    return(character(0))
+  }
+
+  filtered <- geographic_indicators[theme == selected_theme &
+                                      theme_category == selected_category]
+  if (nrow(filtered) == 0) return(character(0))
+
+  desc_col <- if (lang == "en") "description_en" else "description_pt"
+  setNames(filtered$indicator_id, filtered[[desc_col]])
+}
 
 # ------------------------------------------------------------------------------
 # UI
@@ -165,7 +272,25 @@ geographicUI <- function(id) {
         )
       ),
 
-      # Indicator selection
+      # Theme selection (top level)
+      selectInput(
+        ns("theme"),
+        label = tags$span(style = "font-size: 0.75rem; font-weight: 600;",
+                          textOutput(ns("label_theme"), inline = TRUE)),
+        choices = NULL,
+        selected = NULL
+      ),
+
+      # Category selection (middle level)
+      selectInput(
+        ns("category"),
+        label = tags$span(style = "font-size: 0.75rem; font-weight: 600;",
+                          textOutput(ns("label_category"), inline = TRUE)),
+        choices = NULL,
+        selected = NULL
+      ),
+
+      # Indicator selection (bottom level)
       selectInput(
         ns("indicator"),
         label = tags$span(style = "font-size: 0.75rem; font-weight: 600;",
@@ -403,7 +528,9 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     # --------------------------------------------------------------------------
 
     output$label_last_updated <- renderText({ i18n("messages.last_updated", get_lang()) })
-    output$label_indicator <- renderText({ toupper(i18n("geographic.select_indicator", get_lang())) })
+    output$label_theme <- renderText({ toupper(i18n("controls.theme", get_lang())) })
+    output$label_category <- renderText({ toupper(i18n("controls.category", get_lang())) })
+    output$label_indicator <- renderText({ toupper(i18n("controls.series", get_lang())) })
     output$label_period <- renderText({ toupper(i18n("geographic.select_period", get_lang())) })
     output$label_display_options <- renderText({ toupper(if(get_lang() == "en") "OPTIONS" else "OPCOES") })
     output$label_show_labels <- renderText({ if(get_lang() == "en") "Show state labels" else "Mostrar siglas dos estados" })
@@ -424,25 +551,77 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     })
 
     # --------------------------------------------------------------------------
-    # Update indicator choices
+    # Update theme choices (initial load and language change)
     # --------------------------------------------------------------------------
 
     observe({
       lang_val <- get_lang()
+      themes <- get_geo_theme_choices(lang_val)
 
-      # Get indicator choices with translated labels
-      desc_col <- if(lang_val == "en") "description_en" else "description_pt"
-      choices <- setNames(
-        geographic_indicators$indicator_id,
-        geographic_indicators[[desc_col]]
+      updateSelectInput(
+        session, "theme",
+        choices = themes,
+        selected = if ("labor_market" %in% themes) "labor_market" else themes[1]
       )
+    }) |> bindEvent(get_lang(), once = FALSE)
+
+    # --------------------------------------------------------------------------
+    # Update category choices when theme changes
+    # --------------------------------------------------------------------------
+
+    observeEvent(input$theme, {
+      req(input$theme)
+      lang_val <- get_lang()
+
+      category_choices <- get_geo_category_choices(input$theme, lang_val)
+
+      # Default selection based on theme
+      default_cat <- if (length(category_choices) > 0) {
+        if (input$theme == "labor_market" && "unemployment" %in% category_choices) {
+          "unemployment"
+        } else {
+          category_choices[1]
+        }
+      } else {
+        NULL
+      }
+
+      updateSelectInput(
+        session, "category",
+        choices = category_choices,
+        selected = default_cat
+      )
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    # --------------------------------------------------------------------------
+    # Update indicator choices when category changes
+    # --------------------------------------------------------------------------
+
+    observeEvent(input$category, {
+      req(input$theme, input$category)
+      lang_val <- get_lang()
+
+      indicator_choices <- get_geo_indicator_choices(
+        input$theme, input$category, lang_val
+      )
+
+      # Default to first indicator or unemployment rate if available
+      default_ind <- if (length(indicator_choices) > 0) {
+        if ("taxadesocup" %in% indicator_choices) {
+          "taxadesocup"
+        } else {
+          indicator_choices[1]
+        }
+      } else {
+        NULL
+      }
 
       updateSelectInput(
         session, "indicator",
-        choices = choices,
-        selected = "taxadesocup"  # Default to unemployment rate
+        choices = indicator_choices,
+        selected = default_ind
       )
-    }) |> bindEvent(get_lang(), once = FALSE)
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
     # Update view type labels based on language
     observe({
