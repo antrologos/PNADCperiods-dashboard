@@ -667,15 +667,20 @@ format_date_i18n <- function(date, lang = "pt", format = "short") {
 #'
 #' @export
 format_number_i18n <- function(x, digits = 1, lang = "pt") {
-  if (is.na(x)) return(NA_character_)
+  # Vectorized version
+  if (length(x) == 0) return(character(0))
 
   if (lang == "pt") {
     # Brazilian format: 1.234,5
-    formatC(x, format = "f", digits = digits, big.mark = ".", decimal.mark = ",")
+    result <- formatC(x, format = "f", digits = digits, big.mark = ".", decimal.mark = ",")
   } else {
     # English format: 1,234.5
-    formatC(x, format = "f", digits = digits, big.mark = ",", decimal.mark = ".")
+    result <- formatC(x, format = "f", digits = digits, big.mark = ",", decimal.mark = ".")
   }
+
+  # Handle NAs
+  result[is.na(x)] <- NA_character_
+  result
 }
 
 

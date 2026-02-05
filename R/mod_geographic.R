@@ -624,16 +624,13 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         Value = value
       )]
 
+      # Sort by value descending (before renaming columns)
+      dt_display <- dt_display[order(-Value)]
+
       # i18n column names
       if(lang_val == "pt") {
         setnames(dt_display, c("State", "Abbrev", "Region", "Value"),
                  c("Estado", "Sigla", "Regiao", "Valor"))
-      }
-
-      # Sort by value descending
-      dt_display <- dt_display[order(-Value)]
-      if(lang_val == "pt") {
-        dt_display <- dt_display[order(-Valor)]
       }
 
       datatable(
