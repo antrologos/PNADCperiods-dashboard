@@ -759,28 +759,32 @@ format_series_value <- function(x, unit = "thousands", lang = "pt",
 #' Get unit type for a series from metadata
 #'
 #' @param metadata Series metadata data.table
-#' @param series_name Name of the series
+#' @param series_id Series identifier (series_name column value)
 #' @return Unit type string (default: "thousands")
 #'
 #' @export
-get_series_unit <- function(metadata, series_name) {
+get_series_unit <- function(metadata, series_id) {
   if (is.null(metadata)) return("thousands")
 
-  row <- metadata[metadata$series_name == series_name, ]
-  if (nrow(row) == 0) return("thousands")
+  # Use which() to avoid data.table scoping issues
+  # (variable named 'series_name' would conflict with column name)
+  idx <- which(metadata$series_name == series_id)
+  if (length(idx) == 0) return("thousands")
+
+  row <- metadata[idx, ]
 
   if ("unit" %in% names(row) && !is.na(row$unit[1])) {
     return(row$unit[1])
   }
 
   # Fallback: infer from series name (more specific patterns)
-  if (grepl("^taxa|^perc|^nivelocup$|^niveldesocup$", series_name, ignore.case = TRUE)) {
+  if (grepl("^taxa|^perc|^nivelocup$|^niveldesocup$", series_id, ignore.case = TRUE)) {
     return("percent")
-  } else if (grepl("^massa", series_name, ignore.case = TRUE)) {
+  } else if (grepl("^massa", series_id, ignore.case = TRUE)) {
     return("currency_millions")
-  } else if (grepl("^rend|^rhr", series_name, ignore.case = TRUE)) {
+  } else if (grepl("^rend|^rhr", series_id, ignore.case = TRUE)) {
     return("currency")
-  } else if (grepl("^ipca|^inpc", series_name, ignore.case = TRUE)) {
+  } else if (grepl("^ipca|^inpc", series_id, ignore.case = TRUE)) {
     return("index")
   }
 
