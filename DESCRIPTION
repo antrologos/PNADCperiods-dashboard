@@ -31,5 +31,4 @@ Suggests:
     ineq,
     sidrar,
     deflateBR,
-    openxlsx,
-    PNADCperiods
+    openxlsx

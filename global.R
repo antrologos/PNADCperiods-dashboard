@@ -103,14 +103,6 @@ load_app_data <- function() {
   metadata_path <- file.path(data_dir, "series_metadata.rds")
   if (file.exists(metadata_path)) {
     app_data$series_metadata <- readRDS(metadata_path)
-  } else {
-    # Try to get from package if available
-    if (requireNamespace("PNADCperiods", quietly = TRUE)) {
-      app_data$series_metadata <- PNADCperiods::get_sidra_series_metadata()
-      # Save for future use
-      if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
-      saveRDS(app_data$series_metadata, metadata_path)
-    }
   }
 
   # Load mensalized SIDRA series

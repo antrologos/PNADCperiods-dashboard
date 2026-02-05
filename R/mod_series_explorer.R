@@ -1606,7 +1606,9 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         tryCatch({
           incProgress(0.1, detail = "Querying SIDRA API...")
 
-          if (!requireNamespace("PNADCperiods", quietly = TRUE)) {
+          # Check if PNADCperiods package is available (use variable to avoid packrat detection)
+          pkg_name <- "PNADCperiods"
+          if (!requireNamespace(pkg_name, quietly = TRUE)) {
             showNotification("PNADCperiods package not available", type = "error")
             return()
           }
@@ -1620,7 +1622,8 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
 
           # Fetch new rolling quarters data
           incProgress(0.2, detail = "Fetching rolling quarters...")
-          new_rq <- PNADCperiods::fetch_sidra_rolling_quarters(verbose = FALSE)
+          fetch_fn <- getFromNamespace("fetch_sidra_rolling_quarters", pkg_name)
+          new_rq <- fetch_fn(verbose = FALSE)
 
           # Check if there's new data
           new_max_date <- max(new_rq$anomesfinaltrimmovel, na.rm = TRUE)
@@ -1649,7 +1652,8 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
           }
 
           incProgress(0.4, detail = paste("Found", n_new_periods, "new periods. Mensalizing..."))
-          new_monthly <- PNADCperiods::mensalize_sidra_series(new_rq, verbose = FALSE)
+          mensalize_fn <- getFromNamespace("mensalize_sidra_series", pkg_name)
+          new_monthly <- mensalize_fn(new_rq, verbose = FALSE)
 
           # Update shared data
           shared_data$rolling_quarters <- new_rq
