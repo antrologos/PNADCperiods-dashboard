@@ -21,11 +21,13 @@ Imports:
     DT (>= 0.30),
     bsicons,
     shinyjs,
+    leaflet (>= 2.1.0),
+    sf,
+    htmltools,
     PNADCperiods
 Suggests:
     seasonal,
     forecast,
-    sf,
     geobr,
     ineq,
     sidrar,

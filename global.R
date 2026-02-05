@@ -9,6 +9,10 @@ library(data.table)
 library(ggplot2)
 library(plotly)
 library(DT)
+library(leaflet)
+library(sf)
+library(htmltools)
+
 # Try to load shinyjs, create no-op fallbacks if not available
 shinyjs_available <- requireNamespace("shinyjs", quietly = TRUE)
 if (shinyjs_available) {
@@ -133,6 +137,12 @@ load_app_data <- function() {
   if (file.exists(geo_path)) {
     app_data$geographic_data <- readRDS(geo_path)
     app_data$geo_last_updated <- file.mtime(geo_path)
+  }
+
+  # Load Brazil state shapefile for choropleth maps
+  sf_path <- file.path(data_dir, "brazil_states_sf.rds")
+  if (file.exists(sf_path)) {
+    app_data$brazil_states_sf <- readRDS(sf_path)
   }
 
   app_data

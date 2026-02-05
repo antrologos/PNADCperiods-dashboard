@@ -5,7 +5,7 @@
 # Phase 3: Geographic visualization of labor market indicators by state (UF)
 #
 # This module provides:
-#   - Choropleth map of Brazil showing state-level indicators
+#   - Choropleth map of Brazil showing state-level indicators (leaflet)
 #   - Time slider/animation for temporal analysis
 #   - State comparison table
 #   - Multiple indicator selection
@@ -159,6 +159,15 @@ geographicUI <- function(id) {
       tags$p(style = "font-size: 0.7rem; font-weight: 600; color: #6c757d; margin-bottom: 0.5rem;",
              textOutput(ns("label_display_options"), inline = TRUE)),
 
+      # View type toggle
+      radioButtons(
+        ns("view_type"),
+        label = NULL,
+        choices = c("Map" = "map", "Bar Chart" = "bar"),
+        selected = "map",
+        inline = TRUE
+      ),
+
       checkboxInput(
         ns("show_labels"),
         label = tags$span(style = "font-size: 0.8rem;",
@@ -207,7 +216,15 @@ geographicUI <- function(id) {
         div(
           class = "card-body",
           style = "padding: 0.5rem;",
-          plotlyOutput(ns("choropleth_map"), height = "500px")
+          # Conditional output: leaflet for map, plotly for bar chart
+          conditionalPanel(
+            condition = sprintf("input['%s'] == 'map'", ns("view_type")),
+            leaflet::leafletOutput(ns("choropleth_map"), height = "500px")
+          ),
+          conditionalPanel(
+            condition = sprintf("input['%s'] == 'bar'", ns("view_type")),
+            plotlyOutput(ns("bar_chart"), height = "500px")
+          )
         )
       ),
 
@@ -367,6 +384,17 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       )
     }) |> bindEvent(get_lang(), once = FALSE)
 
+    # Update view type labels based on language
+    observe({
+      lang_val <- get_lang()
+      if (lang_val == "en") {
+        choices <- c("Map" = "map", "Bar Chart" = "bar")
+      } else {
+        choices <- c("Mapa" = "map", "Grafico de Barras" = "bar")
+      }
+      updateRadioButtons(session, "view_type", choices = choices, inline = TRUE)
+    }) |> bindEvent(get_lang(), once = FALSE)
+
     # --------------------------------------------------------------------------
     # Dynamic period slider
     # --------------------------------------------------------------------------
@@ -467,10 +495,152 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     })
 
     # --------------------------------------------------------------------------
-    # Output: Choropleth map
+    # Output: Choropleth map (leaflet)
     # --------------------------------------------------------------------------
 
-    output$choropleth_map <- renderPlotly({
+    output$choropleth_map <- leaflet::renderLeaflet({
+      data <- filtered_geo_data()
+
+      # Get shapefile from shared_data
+      brazil_states_sf <- shared_data$brazil_states_sf
+
+      validate(
+        need(!is.null(data), "Loading data..."),
+        need(nrow(data) > 0, "No data available for the selected period"),
+        need(!is.null(brazil_states_sf), "State shapefile not available")
+      )
+
+      lang_val <- get_lang()
+
+      # Get color scale based on indicator
+      idx <- which(geographic_indicators$indicator_id == input$indicator)
+      color_scale_name <- if (length(idx) > 0) {
+        geographic_indicators$color_scale[idx]
+      } else {
+        "Blues"
+      }
+
+      # Add data to shapefile by matching uf_code (avoid merge which corrupts sf)
+      sf_data <- brazil_states_sf
+      sf_data$uf_code <- as.character(sf_data$uf_code)
+
+      # Create lookup from data
+      data_lookup <- setNames(as.list(data$value), as.character(data$uf_code))
+      abbrev_lookup <- setNames(as.list(data$uf_abbrev), as.character(data$uf_code))
+      name_lookup <- setNames(as.list(data$uf_name), as.character(data$uf_code))
+      region_lookup <- setNames(as.list(data$region), as.character(data$uf_code))
+
+      # Add columns by matching - use vapply for guaranteed return type
+      sf_data$value <- vapply(sf_data$uf_code, function(x) {
+        v <- data_lookup[[x]]
+        if (is.null(v)) NA_real_ else as.numeric(v)
+      }, FUN.VALUE = numeric(1))
+      sf_data$uf_abbrev <- vapply(sf_data$uf_code, function(x) {
+        v <- abbrev_lookup[[x]]
+        if (is.null(v)) NA_character_ else as.character(v)
+      }, FUN.VALUE = character(1))
+      sf_data$uf_name <- vapply(sf_data$uf_code, function(x) {
+        v <- name_lookup[[x]]
+        if (is.null(v)) NA_character_ else as.character(v)
+      }, FUN.VALUE = character(1))
+      sf_data$region <- vapply(sf_data$uf_code, function(x) {
+        v <- region_lookup[[x]]
+        if (is.null(v)) NA_character_ else as.character(v)
+      }, FUN.VALUE = character(1))
+
+      # Create color palette
+      pal_func <- switch(color_scale_name,
+        "Reds" = leaflet::colorNumeric("Reds", domain = sf_data$value, na.color = "#ccc"),
+        "Greens" = leaflet::colorNumeric("Greens", domain = sf_data$value, na.color = "#ccc"),
+        leaflet::colorNumeric("Blues", domain = sf_data$value, na.color = "#ccc")
+      )
+
+      # Create labels for hover
+      labels <- sprintf(
+        "<strong>%s - %s</strong><br/>%s: %s%%<br/>%s: %s",
+        sf_data$uf_abbrev,
+        sf_data$uf_name,
+        if(lang_val == "en") "Value" else "Valor",
+        format_number_i18n(sf_data$value, 1, lang_val),
+        if(lang_val == "en") "Region" else "Regiao",
+        sf_data$region
+      ) |> lapply(htmltools::HTML)
+
+      # Build leaflet map
+      m <- leaflet::leaflet(sf_data) |>
+        leaflet::addProviderTiles(
+          leaflet::providers$CartoDB.Positron,
+          options = leaflet::providerTileOptions(noWrap = TRUE)
+        ) |>
+        leaflet::addPolygons(
+          fillColor = ~pal_func(value),
+          weight = 1,
+          opacity = 1,
+          color = "white",
+          dashArray = "",
+          fillOpacity = 0.7,
+          highlightOptions = leaflet::highlightOptions(
+            weight = 2,
+            color = "#666",
+            dashArray = "",
+            fillOpacity = 0.8,
+            bringToFront = TRUE
+          ),
+          label = labels,
+          labelOptions = leaflet::labelOptions(
+            style = list(
+              "font-weight" = "normal",
+              padding = "3px 8px"
+            ),
+            textsize = "13px",
+            direction = "auto"
+          )
+        ) |>
+        leaflet::addLegend(
+          pal = pal_func,
+          values = ~value,
+          opacity = 0.7,
+          title = "%",
+          position = "bottomright",
+          labFormat = leaflet::labelFormat(suffix = "%")
+        ) |>
+        leaflet::setView(lng = -55, lat = -15, zoom = 4)
+
+      # Add state labels if enabled
+      if (isTRUE(input$show_labels)) {
+        # Calculate centroids for labels
+        centroids <- suppressWarnings(sf::st_centroid(sf_data))
+        coords <- sf::st_coordinates(centroids)
+        sf_data$lng <- coords[, 1]
+        sf_data$lat <- coords[, 2]
+
+        m <- m |>
+          leaflet::addLabelOnlyMarkers(
+            data = sf_data,
+            lng = ~lng,
+            lat = ~lat,
+            label = ~uf_abbrev,
+            labelOptions = leaflet::labelOptions(
+              noHide = TRUE,
+              direction = "center",
+              textOnly = TRUE,
+              style = list(
+                "color" = "#333",
+                "font-size" = "10px",
+                "font-weight" = "bold"
+              )
+            )
+          )
+      }
+
+      m
+    })
+
+    # --------------------------------------------------------------------------
+    # Output: Bar chart (plotly)
+    # --------------------------------------------------------------------------
+
+    output$bar_chart <- renderPlotly({
       data <- filtered_geo_data()
 
       validate(
@@ -482,7 +652,11 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
 
       # Get color scale based on indicator
       idx <- which(geographic_indicators$indicator_id == input$indicator)
-      color_scale <- if (length(idx) > 0) geographic_indicators$color_scale[idx] else "Blues"
+      color_scale <- if (length(idx) > 0) {
+        geographic_indicators$color_scale[idx]
+      } else {
+        "Blues"
+      }
 
       # Create hover text
       data[, hover_text := paste0(
@@ -493,25 +667,8 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         region
       )]
 
-      # Prepare data for plotly choropleth
-      # We'll use a simple bar chart styled as a map alternative
-      # since plotly choropleth requires geojson
-
       # Sort by value for visualization
       data <- data[order(-value)]
-
-      # Create color scale
-      n_colors <- nrow(data)
-      if (color_scale == "Reds") {
-        colors <- colorRampPalette(c("#fee5d9", "#fcbba1", "#fc9272", "#fb6a4a", "#de2d26", "#a50f15"))(n_colors)
-      } else if (color_scale == "Greens") {
-        colors <- colorRampPalette(c("#edf8e9", "#c7e9c0", "#a1d99b", "#74c476", "#31a354", "#006d2c"))(n_colors)
-      } else {
-        colors <- colorRampPalette(c("#eff3ff", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd", "#08519c"))(n_colors)
-      }
-
-      # Assign colors based on rank
-      data[, color := colors[.I]]
 
       # Create horizontal bar chart (more readable for 27 states)
       p <- plot_ly(

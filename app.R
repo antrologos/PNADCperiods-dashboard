@@ -200,7 +200,8 @@ server <- function(input, output, session) {
     last_updated = app_data$last_updated,
     # Geographic data (Phase 3)
     geographic_data = app_data$geographic_data,
-    geo_last_updated = app_data$geo_last_updated
+    geo_last_updated = app_data$geo_last_updated,
+    brazil_states_sf = app_data$brazil_states_sf
   )
 
   # --------------------------------------------------------------------------

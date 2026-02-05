@@ -73,6 +73,7 @@ app_files <- c(
   "data/rolling_quarters.rds",
   "data/series_metadata.rds",
   "data/geographic_data.rds",
+  "data/brazil_states_sf.rds",
   "www/custom.css"
 )
 
