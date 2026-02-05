@@ -72,6 +72,7 @@ app_files <- c(
   "data/monthly_sidra.rds",
   "data/rolling_quarters.rds",
   "data/series_metadata.rds",
+  "data/geographic_data.rds",
   "www/custom.css"
 )
 
