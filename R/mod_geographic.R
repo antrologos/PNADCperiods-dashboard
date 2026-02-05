@@ -551,6 +551,37 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     })
 
     # --------------------------------------------------------------------------
+    # Indicator-level data (for computing global color domain across all periods)
+    # --------------------------------------------------------------------------
+
+    indicator_data <- reactive({
+      data <- geo_data()
+      req(data, input$indicator)
+      data[indicator == input$indicator]
+    }) |> bindEvent(input$indicator, geo_data())
+
+    # --------------------------------------------------------------------------
+    # Global color domain (min/max across ALL periods for selected indicator)
+    # This ensures consistent colors when navigating between time periods
+    # --------------------------------------------------------------------------
+
+    global_color_domain <- reactive({
+      data <- indicator_data()
+      req(data, nrow(data) > 0)
+
+      values <- data$value[!is.na(data$value)]
+      if (length(values) == 0) return(c(0, 1))
+
+      min_val <- min(values, na.rm = TRUE)
+      max_val <- max(values, na.rm = TRUE)
+
+      # Handle case where all values are identical
+      if (min_val == max_val) return(c(min_val - 0.1, max_val + 0.1))
+
+      c(min_val, max_val)
+    })
+
+    # --------------------------------------------------------------------------
     # Update theme choices (initial load and language change)
     # --------------------------------------------------------------------------
 
@@ -800,13 +831,15 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       }
       is_rate <- unit_type == "percent"
 
-      # Create color palette
+      # Create color palette with GLOBAL domain (consistent across all periods)
+      color_domain <- global_color_domain()
+
       pal_func <- switch(color_scale_name,
-        "Reds" = leaflet::colorNumeric("Reds", domain = sf_data$value, na.color = "#ccc"),
-        "Greens" = leaflet::colorNumeric("Greens", domain = sf_data$value, na.color = "#ccc"),
-        "Oranges" = leaflet::colorNumeric("Oranges", domain = sf_data$value, na.color = "#ccc"),
-        "Purples" = leaflet::colorNumeric("Purples", domain = sf_data$value, na.color = "#ccc"),
-        leaflet::colorNumeric("Blues", domain = sf_data$value, na.color = "#ccc")
+        "Reds" = leaflet::colorNumeric("Reds", domain = color_domain, na.color = "#ccc"),
+        "Greens" = leaflet::colorNumeric("Greens", domain = color_domain, na.color = "#ccc"),
+        "Oranges" = leaflet::colorNumeric("Oranges", domain = color_domain, na.color = "#ccc"),
+        "Purples" = leaflet::colorNumeric("Purples", domain = color_domain, na.color = "#ccc"),
+        leaflet::colorNumeric("Blues", domain = color_domain, na.color = "#ccc")
       )
 
       # Create labels for hover - format based on unit type
@@ -859,7 +892,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         ) |>
         leaflet::addLegend(
           pal = pal_func,
-          values = ~value,
+          values = color_domain,  # Use global domain for consistent legend
           opacity = 0.7,
           title = if(is_rate) "%" else if(lang_val == "en") "thousands" else "milhares",
           position = "bottomright",
@@ -929,6 +962,9 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       }
       is_rate <- unit_type == "percent"
 
+      # Get global color domain for consistent colors across periods
+      color_domain <- global_color_domain()
+
       # Create hover text with appropriate formatting
       if (is_rate) {
         data[, hover_text := paste0(
@@ -964,6 +1000,8 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
           color = ~value,
           colorscale = color_scale,
           showscale = TRUE,
+          cmin = color_domain[1],  # Fix minimum (global domain)
+          cmax = color_domain[2],  # Fix maximum (global domain)
           colorbar = list(
             title = list(text = if(is_rate) "%" else "mil", font = list(size = 11)),
             ticksuffix = if(is_rate) "%" else "",
@@ -1217,10 +1255,34 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         data <- filtered_geo_data()
         lang_val <- get_lang()
 
+        # Get global color domain and color scale for consistent exports
+        color_domain <- global_color_domain()
+
+        # Get color scale name based on indicator
+        idx <- which(geographic_indicators$indicator_id == input$indicator)
+        color_scale_name <- if (length(idx) > 0) {
+          geographic_indicators$color_scale[idx]
+        } else {
+          "Blues"
+        }
+
+        # Map color scale names to ggplot gradient colors
+        gradient_colors <- switch(color_scale_name,
+          "Reds" = c("#fee0d2", "#a50f15"),
+          "Greens" = c("#e5f5e0", "#31a354"),
+          "Oranges" = c("#fee6ce", "#e6550d"),
+          "Purples" = c("#efedf5", "#756bb1"),
+          c("#c6dbef", "#08519c")  # Blues default
+        )
+
         p <- ggplot(data, aes(x = reorder(uf_abbrev, value), y = value, fill = value)) +
           geom_col() +
           coord_flip() +
-          scale_fill_gradient(low = "#c6dbef", high = "#08519c") +
+          scale_fill_gradient(
+            low = gradient_colors[1],
+            high = gradient_colors[2],
+            limits = color_domain  # Fixed limits across all periods
+          ) +
           labs(
             title = output$map_title(),
             subtitle = output$map_subtitle(),
