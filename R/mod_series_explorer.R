@@ -825,6 +825,12 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         monthly = dt[[monthly_col]]
       )
 
+      # Convert thousands to millions for display
+      series_unit <- get_series_unit(shared_data$series_metadata, input$series)
+      if (series_unit == "thousands") {
+        result[, monthly := monthly / 1000]
+      }
+
       # Add quarterly data if available
       # Note: Rolling quarters align with the 2nd month (middle), not the 3rd (final)
       # So we shift anomesfinaltrimmovel back by 1 month
@@ -849,6 +855,10 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
             anomesexato = rq_anomesexato_shifted,
             quarterly = rq[[quarterly_col]]
           )
+          # Convert quarterly to millions if data is in thousands
+          if (series_unit == "thousands") {
+            rq_subset[, quarterly := quarterly / 1000]
+          }
           result <- merge(result, rq_subset, by = "anomesexato", all.x = TRUE)
         }
       }
@@ -1106,8 +1116,8 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         )
       }
 
-      # Get tick format and locale separators based on series unit type
-      series_unit <- get_series_unit(shared_data$series_metadata, input$series)
+      # Get tick format and locale separators based on display unit type
+      series_unit <- display_unit()
       tick_fmt <- get_plotly_tickformat(series_unit, lang_val)
       separators <- get_plotly_separators(lang_val)
 
@@ -1127,8 +1137,12 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
       # Add % suffix for percent series
       if (series_unit == "percent") {
         yaxis_config$ticksuffix <- "%"
-        # Remove % from tickformat since we're adding suffix
         yaxis_config$tickformat <- ",.1f"
+      }
+
+      # Add millions suffix for converted population/level series
+      if (series_unit == "millions_display") {
+        yaxis_config$ticksuffix <- if (lang_val == "en") " M" else " mi"
       }
 
       # Configure layout
@@ -1291,9 +1305,9 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         }
       }
 
-      # Get tick format and locale separators based on series unit type
+      # Get tick format and locale separators based on display unit type
       lang_val <- get_lang()
-      series_unit <- get_series_unit(shared_data$series_metadata, input$series)
+      series_unit <- display_unit()
       tick_fmt <- get_plotly_tickformat(series_unit, lang_val)
       separators <- get_plotly_separators(lang_val)
 
@@ -1314,6 +1328,11 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
       if (series_unit == "percent") {
         yaxis_config$ticksuffix <- "%"
         yaxis_config$tickformat <- ",.1f"
+      }
+
+      # Add millions suffix for converted population/level series
+      if (series_unit == "millions_display") {
+        yaxis_config$ticksuffix <- if (lang_val == "en") " M" else " mi"
       }
 
       # Common layout
@@ -1341,38 +1360,44 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     # Output: Summary statistics
     # --------------------------------------------------------------------------
 
-    # Helper to get current series unit
+    # Helper to get current series unit (from metadata)
     get_current_unit <- reactive({
       req(input$series)
       metadata <- shared_data$series_metadata
       get_series_unit(metadata, input$series)
     })
 
+    # Display unit: "thousands" data is converted to millions for display
+    display_unit <- reactive({
+      series_unit <- get_current_unit()
+      if (series_unit == "thousands") "millions_display" else series_unit
+    })
+
     output$stat_min <- renderText({
       req(filtered_data())
       dt <- filtered_data()
       format_series_value(min(dt$monthly, na.rm = TRUE),
-                          unit = get_current_unit(),
+                          unit = display_unit(),
                           lang = get_lang(),
-                          include_unit = FALSE)
+                          include_unit = TRUE)
     })
 
     output$stat_max <- renderText({
       req(filtered_data())
       dt <- filtered_data()
       format_series_value(max(dt$monthly, na.rm = TRUE),
-                          unit = get_current_unit(),
+                          unit = display_unit(),
                           lang = get_lang(),
-                          include_unit = FALSE)
+                          include_unit = TRUE)
     })
 
     output$stat_mean <- renderText({
       req(filtered_data())
       dt <- filtered_data()
       format_series_value(mean(dt$monthly, na.rm = TRUE),
-                          unit = get_current_unit(),
+                          unit = display_unit(),
                           lang = get_lang(),
-                          include_unit = FALSE)
+                          include_unit = TRUE)
     })
 
     output$stat_latest <- renderText({
@@ -1380,9 +1405,9 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
       dt <- filtered_data()
       latest <- dt[which.max(date), monthly]
       format_series_value(latest,
-                          unit = get_current_unit(),
+                          unit = display_unit(),
                           lang = get_lang(),
-                          include_unit = FALSE)
+                          include_unit = TRUE)
     })
 
     output$stat_yoy <- renderText({
@@ -1450,6 +1475,23 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
       # i18n table language options
       search_label <- if (lang_val == "en") "Filter:" else "Filtrar:"
 
+      # Unit-aware decimal digits
+      current_unit <- display_unit()
+      unit_digits <- switch(current_unit,
+        "percent" = 1,
+        "currency" = 0,
+        "currency_millions" = 0,
+        "thousands" = 0,
+        "millions" = 0,
+        "millions_display" = 1,
+        "index" = 2,
+        2  # default
+      )
+
+      # Locale-aware number formatting
+      big_mark <- if(lang_val == "pt") "." else ","
+      dec_mark <- if(lang_val == "pt") "," else "."
+
       datatable(
         dt_display,
         options = list(
@@ -1462,7 +1504,8 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         style = "bootstrap4",
         class = "table-sm table-striped"
       ) %>%
-        formatRound(columns = 2:ncol(dt_display), digits = 2)
+        formatRound(columns = 2:ncol(dt_display), digits = unit_digits,
+                    mark = big_mark, dec.mark = dec_mark)
     })
 
     # --------------------------------------------------------------------------
@@ -1504,8 +1547,30 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
           paste("Fonte: PNADCperiods | Gerado em:", Sys.Date())
         }
 
+        # Unit-aware y-axis labels
+        current_unit <- display_unit()
+        big_mark <- if(lang_val == "pt") "." else ","
+        dec_mark <- if(lang_val == "pt") "," else "."
+
+        y_labels <- switch(current_unit,
+          "percent" = scales::label_number(suffix = "%", accuracy = 0.1,
+                                            big.mark = big_mark, decimal.mark = dec_mark),
+          "currency" = scales::label_number(prefix = "R$ ", accuracy = 1,
+                                             big.mark = big_mark, decimal.mark = dec_mark),
+          "currency_millions" = scales::label_number(prefix = "R$ ", suffix = if(lang_val == "pt") " mi" else " M",
+                                                      accuracy = 1,
+                                                      big.mark = big_mark, decimal.mark = dec_mark),
+          "millions_display" = scales::label_number(suffix = if(lang_val == "pt") " mi" else " M",
+                                                     accuracy = 0.1,
+                                                     big.mark = big_mark, decimal.mark = dec_mark),
+          "index" = scales::label_number(accuracy = 0.01,
+                                          big.mark = big_mark, decimal.mark = dec_mark),
+          scales::label_number(big.mark = big_mark, decimal.mark = dec_mark)
+        )
+
         p <- ggplot(dt, aes(x = date)) +
           geom_line(aes(y = monthly), color = ibge_colors$secondary, linewidth = 1) +
+          scale_y_continuous(labels = y_labels) +
           labs(
             title = get_plot_title(),
             x = NULL, y = NULL,

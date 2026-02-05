@@ -211,7 +211,7 @@ translations <- list(
   subcategories = list(
     # Participation/unemployment/underutilization
     rates = list(en = "Rates", pt = "Taxas"),
-    levels = list(en = "Levels (millions)", pt = "Níveis (milhões)"),
+    levels = list(en = "Levels (thousands)", pt = "Níveis (milhares)"),
     # Employment type subcategories
     employees = list(en = "Employees", pt = "Empregados"),
     domestic = list(en = "Domestic Workers", pt = "Trabalhadores Domésticos"),
@@ -233,7 +233,10 @@ translations <- list(
   units = list(
     percent = list(en = "%", pt = "%"),
     millions = list(en = "millions", pt = "milhões"),
+    thousands = list(en = "thousands", pt = "milhares"),
+    millions_display = list(en = "million", pt = "mi"),
     currency = list(en = "R$", pt = "R$"),
+    currency_millions = list(en = "BRL millions", pt = "R$ milhões"),
     index = list(en = "index", pt = "índice"),
     people = list(en = "people", pt = "pessoas")
   ),
@@ -688,18 +691,21 @@ format_number_i18n <- function(x, digits = 1, lang = "pt") {
 #'
 #' Formats values appropriately based on series unit type:
 #' - percent: 1 decimal, % suffix
-#' - millions/levels: 0 decimals, thousands separator
-#' - currency: R$ prefix, 2 decimals
+#' - thousands: data in thousands, displayed in millions (divided by 1000)
+#' - millions_display: data already in millions, 1 decimal with mi/M suffix
+#' - currency: R$ prefix, 0 decimals
+#' - currency_millions: R$ prefix, 0 decimals
 #' - index: 2 decimals
 #'
 #' @param x Numeric value
-#' @param unit Unit type: "percent", "millions", "currency", "index", "people"
+#' @param unit Unit type: "percent", "thousands", "millions_display", "currency",
+#'   "currency_millions", "index", "millions", "people"
 #' @param lang Language code: "en" or "pt"
 #' @param include_unit Whether to include unit suffix/prefix
 #' @return Formatted string
 #'
 #' @export
-format_series_value <- function(x, unit = "millions", lang = "pt",
+format_series_value <- function(x, unit = "thousands", lang = "pt",
                                 include_unit = TRUE) {
   if (is.na(x)) return(NA_character_)
 
@@ -709,6 +715,21 @@ format_series_value <- function(x, unit = "millions", lang = "pt",
     formatted <- format_number_i18n(x, digits = 1, lang = lang)
     if (include_unit) {
       formatted <- paste0(formatted, "%")
+    }
+  } else if (unit == "thousands") {
+    # Data is in thousands; display in millions (divide by 1000)
+    val_millions <- x / 1000
+    formatted <- format_number_i18n(val_millions, digits = 1, lang = lang)
+    if (include_unit) {
+      unit_label <- if (lang == "en") " million" else " mi"
+      formatted <- paste0(formatted, unit_label)
+    }
+  } else if (unit == "millions_display") {
+    # Data already converted to millions; display with 1 decimal
+    formatted <- format_number_i18n(x, digits = 1, lang = lang)
+    if (include_unit) {
+      unit_label <- if (lang == "en") " million" else " mi"
+      formatted <- paste0(formatted, unit_label)
     }
   } else if (unit %in% c("millions", "people")) {
     # Population/levels: no decimals, thousands separator
@@ -739,29 +760,31 @@ format_series_value <- function(x, unit = "millions", lang = "pt",
 #'
 #' @param metadata Series metadata data.table
 #' @param series_name Name of the series
-#' @return Unit type string (default: "millions")
+#' @return Unit type string (default: "thousands")
 #'
 #' @export
 get_series_unit <- function(metadata, series_name) {
-  if (is.null(metadata)) return("millions")
+  if (is.null(metadata)) return("thousands")
 
   row <- metadata[metadata$series_name == series_name, ]
-  if (nrow(row) == 0) return("millions")
+  if (nrow(row) == 0) return("thousands")
 
   if ("unit" %in% names(row) && !is.na(row$unit[1])) {
     return(row$unit[1])
   }
 
-  # Fallback: infer from series name
-  if (grepl("^taxa|^perc|^nivel", series_name, ignore.case = TRUE)) {
+  # Fallback: infer from series name (more specific patterns)
+  if (grepl("^taxa|^perc|^nivelocup$|^niveldesocup$", series_name, ignore.case = TRUE)) {
     return("percent")
-  } else if (grepl("^rend|^rhr|massa", series_name, ignore.case = TRUE)) {
+  } else if (grepl("^massa", series_name, ignore.case = TRUE)) {
+    return("currency_millions")
+  } else if (grepl("^rend|^rhr", series_name, ignore.case = TRUE)) {
     return("currency")
   } else if (grepl("^ipca|^inpc", series_name, ignore.case = TRUE)) {
     return("index")
   }
 
-  return("millions")
+  return("thousands")
 }
 
 
@@ -775,11 +798,15 @@ get_series_unit <- function(metadata, series_name) {
 #' @return D3 format string
 #'
 #' @export
-get_plotly_tickformat <- function(unit = "millions", lang = "pt") {
+get_plotly_tickformat <- function(unit = "thousands", lang = "pt") {
 
   # D3 format strings - separators are handled by layout(separators=...)
   if (unit == "percent") {
     ",.1f"  # 1 decimal for percentages
+  } else if (unit == "thousands") {
+    ",.0f"  # No decimals for thousands (raw SIDRA data)
+  } else if (unit == "millions_display") {
+    ",.1f"  # 1 decimal for converted-to-millions values (e.g. 89.3)
   } else if (unit %in% c("millions", "people")) {
     ",.0f"  # No decimals for population/levels
   } else if (unit %in% c("currency", "currency_millions")) {
@@ -819,7 +846,7 @@ get_plotly_separators <- function(lang = "pt") {
 #' @return D3 format string
 #'
 #' @export
-get_plotly_hoverformat <- function(unit = "millions", lang = "pt") {
+get_plotly_hoverformat <- function(unit = "thousands", lang = "pt") {
   # Same as tickformat
   get_plotly_tickformat(unit, lang)
 }

@@ -847,7 +847,8 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         value_formatted <- paste0(format_number_i18n(sf_data$value, 1, lang_val), "%")
       } else {
         # For levels, show in thousands with proper formatting
-        value_formatted <- paste0(format_number_i18n(sf_data$value / 1000, 0, lang_val), " mil")
+        mil_label <- if(lang_val == "en") " thousand" else " mil"
+        value_formatted <- paste0(format_number_i18n(sf_data$value / 1000, 0, lang_val), mil_label)
       }
 
       labels <- sprintf(
@@ -976,10 +977,11 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         )]
         value_text <- paste0(format_number_i18n(data$value, 1, lang_val), "%")
       } else {
+        mil_label <- if(lang_val == "en") " thousand" else " mil"
         data[, hover_text := paste0(
           "<b>", uf_abbrev, " - ", uf_name, "</b><br>",
           if(lang_val == "en") "Value: " else "Valor: ",
-          format_number_i18n(value / 1000, 0, lang_val), " mil<br>",
+          format_number_i18n(value / 1000, 0, lang_val), mil_label, "<br>",
           if(lang_val == "en") "Region: " else "Regiao: ",
           region
         )]
@@ -1003,8 +1005,12 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
           cmin = color_domain[1],  # Fix minimum (global domain)
           cmax = color_domain[2],  # Fix maximum (global domain)
           colorbar = list(
-            title = list(text = if(is_rate) "%" else "mil", font = list(size = 11)),
+            title = list(
+              text = if(is_rate) "%" else if(lang_val == "en") "thousands" else "milhares",
+              font = list(size = 11)
+            ),
             ticksuffix = if(is_rate) "%" else "",
+            tickformat = if(is_rate) ",.1f" else ",.0f",
             len = 0.6
           )
         ),
@@ -1014,10 +1020,13 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         hoverinfo = "text"
       )
 
-      # Layout
+      # Layout with proper locale formatting
+      separators <- get_plotly_separators(lang_val)
+
       p %>% layout(
         xaxis = list(
           title = "",
+          tickformat = if(is_rate) ",.1f" else ",.0f",
           ticksuffix = if(is_rate) "%" else "",
           zeroline = FALSE
         ),
@@ -1025,6 +1034,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
           title = "",
           tickfont = list(size = 10)
         ),
+        separators = separators,
         margin = list(l = 50, r = 30, t = 10, b = 30),
         paper_bgcolor = "white",
         plot_bgcolor = "white"
@@ -1053,7 +1063,8 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       if (unit_type == "percent") {
         paste0(format_number_i18n(val, 1, lang_val), "%")
       } else {
-        paste0(format_number_i18n(val / 1000, 0, lang_val), " mil")
+        mil_label <- if(lang_val == "en") " thousand" else " mil"
+        paste0(format_number_i18n(val / 1000, 0, lang_val), mil_label)
       }
     }
 
@@ -1158,6 +1169,10 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         setnames(dt_display, "Value", value_col_name)
       }
 
+      # Locale-aware number formatting
+      big_mark <- if(lang_val == "pt") "." else ","
+      dec_mark <- if(lang_val == "pt") "," else "."
+
       datatable(
         dt_display,
         options = list(
@@ -1170,7 +1185,8 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         style = "bootstrap4",
         class = "table-sm table-striped"
       ) %>%
-        formatRound(columns = value_col_name, digits = if(is_rate) 1 else 0)
+        formatRound(columns = value_col_name, digits = if(is_rate) 1 else 0,
+                    mark = big_mark, dec.mark = dec_mark)
     })
 
     # --------------------------------------------------------------------------
