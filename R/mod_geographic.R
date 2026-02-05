@@ -51,23 +51,83 @@ uf_mapping <- data.table::data.table(
                 rep("South", 3), rep("Central-West", 4))
 )
 
-# Geographic indicator definitions (subset of series available at UF level)
+# Geographic indicator definitions (monthly estimates from microdata)
 geographic_indicators <- data.table::data.table(
-  indicator_id = c("taxadesocup", "taxapartic", "nivelocup"),
-  table_id = c(4093L, 4092L, 4094L),
-  variable_id = c(4099L, 4096L, 4097L),
+  indicator_id = c(
+    # Labor market rates
+    "taxadesocup", "taxapartic", "nivelocup",
+    "taxasubocuphoras", "taxainformal", "taxacontribprev",
+    # Population levels (in thousands)
+    "pop14mais", "pea", "employed", "unemployed", "fora_forca",
+    # Employment by type (in thousands)
+    "empregpriv", "empregpubl", "domestico", "empregador", "contapropria",
+    # Employment by sector (in thousands)
+    "agropecuaria", "industria", "construcao", "comercio", "servicos"
+  ),
   description_pt = c(
+    # Labor market rates
     "Taxa de desocupacao",
     "Taxa de participacao na forca de trabalho",
-    "Nivel de ocupacao"
+    "Nivel de ocupacao",
+    "Taxa de subocupacao por insuficiencia de horas",
+    "Taxa de informalidade",
+    "Taxa de contribuicao previdenciaria",
+    # Population levels
+    "Populacao de 14 anos ou mais",
+    "Forca de trabalho (PEA)",
+    "Populacao ocupada",
+    "Populacao desocupada",
+    "Fora da forca de trabalho",
+    # Employment by type
+    "Empregados setor privado",
+    "Empregados setor publico",
+    "Trabalhadores domesticos",
+    "Empregadores",
+    "Conta propria",
+    # Employment by sector
+    "Agropecuaria",
+    "Industria",
+    "Construcao",
+    "Comercio",
+    "Servicos"
   ),
   description_en = c(
+    # Labor market rates
     "Unemployment rate",
     "Labor force participation rate",
-    "Employment-population ratio"
+    "Employment-population ratio",
+    "Time-related underemployment rate",
+    "Informality rate",
+    "Social security contribution rate",
+    # Population levels
+    "Population aged 14 and over",
+    "Labor force",
+    "Employed population",
+    "Unemployed population",
+    "Not in labor force",
+    # Employment by type
+    "Private sector employees",
+    "Public sector employees",
+    "Domestic workers",
+    "Employers",
+    "Self-employed",
+    # Employment by sector
+    "Agriculture",
+    "Industry",
+    "Construction",
+    "Commerce",
+    "Services"
   ),
-  unit = c("percent", "percent", "percent"),
-  color_scale = c("Reds", "Blues", "Greens")
+  unit = c(
+    rep("percent", 6),
+    rep("thousands", 15)
+  ),
+  color_scale = c(
+    # Rates: Reds for unemployment/negative, Blues/Greens for positive
+    "Reds", "Blues", "Greens", "Oranges", "Purples", "Blues",
+    # Levels: use sequential scales
+    rep("Blues", 15)
+  )
 )
 
 # ------------------------------------------------------------------------------
@@ -402,7 +462,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     available_periods <- reactive({
       data <- geo_data()
       if (is.null(data)) return(NULL)
-      sort(unique(data$anomesfinaltrimmovel))
+      sort(unique(data$ref_month))
     })
 
     output$period_slider_ui <- renderUI({
@@ -440,7 +500,12 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       indicator_val <- input$indicator
 
       # Filter data
-      result <- data[anomesfinaltrimmovel == period_val & indicator == indicator_val]
+      result <- data[ref_month == period_val & indicator == indicator_val]
+
+      # Ensure uf_code is integer for merge with uf_mapping
+      if (is.character(result$uf_code)) {
+        result[, uf_code := as.integer(uf_code)]
+      }
 
       # Merge with UF mapping for names
       lang_val <- get_lang()
@@ -488,9 +553,9 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       period_label <- format_date_i18n(as.integer(input$period), lang_val, format = "long")
 
       if(lang_val == "en") {
-        paste("Rolling quarter ending in", period_label)
+        paste("Reference month:", period_label)
       } else {
-        paste("Trimestre movel encerrado em", period_label)
+        paste("Mes de referencia:", period_label)
       }
     })
 
@@ -548,20 +613,37 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         if (is.null(v)) NA_character_ else as.character(v)
       }, FUN.VALUE = character(1))
 
+      # Get unit type for this indicator
+      unit_type <- if (length(idx) > 0) {
+        geographic_indicators$unit[idx]
+      } else {
+        "percent"
+      }
+      is_rate <- unit_type == "percent"
+
       # Create color palette
       pal_func <- switch(color_scale_name,
         "Reds" = leaflet::colorNumeric("Reds", domain = sf_data$value, na.color = "#ccc"),
         "Greens" = leaflet::colorNumeric("Greens", domain = sf_data$value, na.color = "#ccc"),
+        "Oranges" = leaflet::colorNumeric("Oranges", domain = sf_data$value, na.color = "#ccc"),
+        "Purples" = leaflet::colorNumeric("Purples", domain = sf_data$value, na.color = "#ccc"),
         leaflet::colorNumeric("Blues", domain = sf_data$value, na.color = "#ccc")
       )
 
-      # Create labels for hover
+      # Create labels for hover - format based on unit type
+      if (is_rate) {
+        value_formatted <- paste0(format_number_i18n(sf_data$value, 1, lang_val), "%")
+      } else {
+        # For levels, show in thousands with proper formatting
+        value_formatted <- paste0(format_number_i18n(sf_data$value / 1000, 0, lang_val), " mil")
+      }
+
       labels <- sprintf(
-        "<strong>%s - %s</strong><br/>%s: %s%%<br/>%s: %s",
+        "<strong>%s - %s</strong><br/>%s: %s<br/>%s: %s",
         sf_data$uf_abbrev,
         sf_data$uf_name,
         if(lang_val == "en") "Value" else "Valor",
-        format_number_i18n(sf_data$value, 1, lang_val),
+        value_formatted,
         if(lang_val == "en") "Region" else "Regiao",
         sf_data$region
       ) |> lapply(htmltools::HTML)
@@ -600,9 +682,13 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
           pal = pal_func,
           values = ~value,
           opacity = 0.7,
-          title = "%",
+          title = if(is_rate) "%" else if(lang_val == "en") "thousands" else "milhares",
           position = "bottomright",
-          labFormat = leaflet::labelFormat(suffix = "%")
+          labFormat = if(is_rate) {
+            leaflet::labelFormat(suffix = "%")
+          } else {
+            leaflet::labelFormat(transform = function(x) round(x / 1000, 0))
+          }
         ) |>
         leaflet::setView(lng = -55, lat = -15, zoom = 4)
 
@@ -650,22 +736,40 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
 
       lang_val <- get_lang()
 
-      # Get color scale based on indicator
+      # Get color scale and unit based on indicator
       idx <- which(geographic_indicators$indicator_id == input$indicator)
       color_scale <- if (length(idx) > 0) {
         geographic_indicators$color_scale[idx]
       } else {
         "Blues"
       }
+      unit_type <- if (length(idx) > 0) {
+        geographic_indicators$unit[idx]
+      } else {
+        "percent"
+      }
+      is_rate <- unit_type == "percent"
 
-      # Create hover text
-      data[, hover_text := paste0(
-        "<b>", uf_abbrev, " - ", uf_name, "</b><br>",
-        if(lang_val == "en") "Value: " else "Valor: ",
-        format_number_i18n(value, 1, lang_val), "%<br>",
-        if(lang_val == "en") "Region: " else "Regiao: ",
-        region
-      )]
+      # Create hover text with appropriate formatting
+      if (is_rate) {
+        data[, hover_text := paste0(
+          "<b>", uf_abbrev, " - ", uf_name, "</b><br>",
+          if(lang_val == "en") "Value: " else "Valor: ",
+          format_number_i18n(value, 1, lang_val), "%<br>",
+          if(lang_val == "en") "Region: " else "Regiao: ",
+          region
+        )]
+        value_text <- paste0(format_number_i18n(data$value, 1, lang_val), "%")
+      } else {
+        data[, hover_text := paste0(
+          "<b>", uf_abbrev, " - ", uf_name, "</b><br>",
+          if(lang_val == "en") "Value: " else "Valor: ",
+          format_number_i18n(value / 1000, 0, lang_val), " mil<br>",
+          if(lang_val == "en") "Region: " else "Regiao: ",
+          region
+        )]
+        value_text <- format_number_i18n(data$value / 1000, 0, lang_val)
+      }
 
       # Sort by value for visualization
       data <- data[order(-value)]
@@ -682,12 +786,12 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
           colorscale = color_scale,
           showscale = TRUE,
           colorbar = list(
-            title = list(text = "%", font = list(size = 11)),
-            ticksuffix = "%",
+            title = list(text = if(is_rate) "%" else "mil", font = list(size = 11)),
+            ticksuffix = if(is_rate) "%" else "",
             len = 0.6
           )
         ),
-        text = ~paste0(format_number_i18n(value, 1, lang_val), "%"),
+        text = value_text,
         textposition = "outside",
         hovertext = ~hover_text,
         hoverinfo = "text"
@@ -697,7 +801,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       p %>% layout(
         xaxis = list(
           title = "",
-          ticksuffix = "%",
+          ticksuffix = if(is_rate) "%" else "",
           zeroline = FALSE
         ),
         yaxis = list(
@@ -716,12 +820,33 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     # Output: Summary statistics
     # --------------------------------------------------------------------------
 
+    # Helper to get current indicator unit type
+    current_unit_type <- reactive({
+      req(input$indicator)
+      idx <- which(geographic_indicators$indicator_id == input$indicator)
+      if (length(idx) > 0) {
+        geographic_indicators$unit[idx]
+      } else {
+        "percent"
+      }
+    })
+
+    # Format value based on unit type
+    format_stat_value <- function(val, lang_val, unit_type) {
+      if (unit_type == "percent") {
+        paste0(format_number_i18n(val, 1, lang_val), "%")
+      } else {
+        paste0(format_number_i18n(val / 1000, 0, lang_val), " mil")
+      }
+    }
+
     output$stat_min <- renderText({
       data <- filtered_geo_data()
       req(data, nrow(data) > 0)
       lang_val <- get_lang()
+      unit_type <- current_unit_type()
       min_val <- min(data$value, na.rm = TRUE)
-      paste0(format_number_i18n(min_val, 1, lang_val), "%")
+      format_stat_value(min_val, lang_val, unit_type)
     })
 
     output$stat_min_state <- renderText({
@@ -735,8 +860,9 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       data <- filtered_geo_data()
       req(data, nrow(data) > 0)
       lang_val <- get_lang()
+      unit_type <- current_unit_type()
       max_val <- max(data$value, na.rm = TRUE)
-      paste0(format_number_i18n(max_val, 1, lang_val), "%")
+      format_stat_value(max_val, lang_val, unit_type)
     })
 
     output$stat_max_state <- renderText({
@@ -750,9 +876,14 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       data <- filtered_geo_data()
       req(data, nrow(data) > 0)
       lang_val <- get_lang()
-      # Brazil average (population-weighted would be better, but use simple mean for now)
-      brazil_avg <- mean(data$value, na.rm = TRUE)
-      paste0(format_number_i18n(brazil_avg, 1, lang_val), "%")
+      unit_type <- current_unit_type()
+      # Brazil total (sum for levels, mean for rates)
+      if (unit_type == "percent") {
+        brazil_val <- mean(data$value, na.rm = TRUE)
+      } else {
+        brazil_val <- sum(data$value, na.rm = TRUE)
+      }
+      format_stat_value(brazil_val, lang_val, unit_type)
     })
 
     output$stat_cv <- renderText({
@@ -772,22 +903,42 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       data <- filtered_geo_data()
       req(data, nrow(data) > 0)
       lang_val <- get_lang()
+      unit_type <- current_unit_type()
+      is_rate <- unit_type == "percent"
 
-      # Select and rename columns
-      dt_display <- data[, .(
-        State = uf_name,
-        Abbrev = uf_abbrev,
-        Region = region,
-        Value = value
-      )]
+      # Select and rename columns, format value based on unit type
+      if (is_rate) {
+        dt_display <- data[, .(
+          State = uf_name,
+          Abbrev = uf_abbrev,
+          Region = region,
+          Value = value
+        )]
+      } else {
+        # For levels, show in thousands
+        dt_display <- data[, .(
+          State = uf_name,
+          Abbrev = uf_abbrev,
+          Region = region,
+          Value = value / 1000
+        )]
+      }
 
       # Sort by value descending (before renaming columns)
       dt_display <- dt_display[order(-Value)]
 
       # i18n column names
+      value_col_name <- if(is_rate) {
+        if(lang_val == "en") "Value (%)" else "Valor (%)"
+      } else {
+        if(lang_val == "en") "Value (thousands)" else "Valor (milhares)"
+      }
+
       if(lang_val == "pt") {
         setnames(dt_display, c("State", "Abbrev", "Region", "Value"),
-                 c("Estado", "Sigla", "Regiao", "Valor"))
+                 c("Estado", "Sigla", "Regiao", value_col_name))
+      } else {
+        setnames(dt_display, "Value", value_col_name)
       }
 
       datatable(
@@ -802,7 +953,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         style = "bootstrap4",
         class = "table-sm table-striped"
       ) %>%
-        formatRound(columns = if(lang_val == "en") "Value" else "Valor", digits = 1)
+        formatRound(columns = value_col_name, digits = if(is_rate) 1 else 0)
     })
 
     # --------------------------------------------------------------------------
@@ -853,10 +1004,16 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
 
     # Stop animation when leaving tab
     onStop(function() {
-      animation_state$running <- FALSE
-      if (!is.null(animation_state$timer)) {
-        animation_state$timer$destroy()
-      }
+      tryCatch({
+        isolate({
+          animation_state$running <- FALSE
+          if (!is.null(animation_state$timer)) {
+            animation_state$timer$destroy()
+          }
+        })
+      }, error = function(e) {
+        # Ignore errors during cleanup
+      })
     })
 
     # --------------------------------------------------------------------------

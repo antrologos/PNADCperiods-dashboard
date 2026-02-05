@@ -72,7 +72,8 @@ app_files <- c(
   "data/monthly_sidra.rds",
   "data/rolling_quarters.rds",
   "data/series_metadata.rds",
-  "data/geographic_data.rds",
+  "data/state_monthly_data.rds",  # State-level monthly estimates from microdata
+  "data/geographic_data.rds",      # Fallback: SIDRA rolling quarters
   "data/brazil_states_sf.rds",
   "www/custom.css"
 )

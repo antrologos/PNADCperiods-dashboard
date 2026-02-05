@@ -133,9 +133,20 @@ load_app_data <- function() {
   }
 
   # Load geographic data (Phase 3)
+  # Prefer state_monthly_data.rds (from microdata), fall back to geographic_data.rds (SIDRA)
+  state_monthly_path <- file.path(data_dir, "state_monthly_data.rds")
   geo_path <- file.path(data_dir, "geographic_data.rds")
-  if (file.exists(geo_path)) {
-    app_data$geographic_data <- readRDS(geo_path)
+
+  if (file.exists(state_monthly_path)) {
+    app_data$geographic_data <- readRDS(state_monthly_path)
+    app_data$geo_last_updated <- file.mtime(state_monthly_path)
+  } else if (file.exists(geo_path)) {
+    # Fallback to old SIDRA data (rename field for compatibility)
+    geo_data <- readRDS(geo_path)
+    if ("anomesfinaltrimmovel" %in% names(geo_data)) {
+      data.table::setnames(geo_data, "anomesfinaltrimmovel", "ref_month")
+    }
+    app_data$geographic_data <- geo_data
     app_data$geo_last_updated <- file.mtime(geo_path)
   }
 
