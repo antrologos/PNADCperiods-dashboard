@@ -30,7 +30,7 @@ ui <- page_navbar(
     useShinyjs(),
     tags$head(
       tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
-      # JavaScript for language toggle
+      # JavaScript for language toggle and slider formatting
       tags$script(HTML("
         // Update language button states
         Shiny.addCustomMessageHandler('update_lang_buttons', function(lang) {
@@ -53,6 +53,41 @@ ui <- page_navbar(
         function setLanguage(lang) {
           localStorage.setItem('pnadc_lang', lang);
           Shiny.setInputValue('selected_lang', lang, {priority: 'event'});
+        }
+
+        // Format date slider tooltips to show only month and year
+        $(document).on('shiny:inputchanged', function(event) {
+          if (event.name && event.name.indexOf('date_slider') !== -1) {
+            formatDateSliderTooltips();
+          }
+        });
+
+        // Also format on slider creation
+        $(document).on('shiny:value', function(event) {
+          setTimeout(formatDateSliderTooltips, 100);
+        });
+
+        function formatDateSliderTooltips() {
+          // Find all ion-range-slider instances and update their prettify function
+          $('.js-range-slider').each(function() {
+            var slider = $(this).data('ionRangeSlider');
+            if (slider) {
+              slider.update({
+                prettify: function(num) {
+                  // num is milliseconds since epoch for date sliders
+                  var date = new Date(num);
+                  var months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+                                'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                  var lang = localStorage.getItem('pnadc_lang') || 'pt';
+                  if (lang === 'en') {
+                    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                  }
+                  return months[date.getMonth()] + ' ' + date.getFullYear();
+                }
+              });
+            }
+          });
         }
       "))
     )
