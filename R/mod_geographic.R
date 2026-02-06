@@ -1074,7 +1074,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       # Get global color domain for consistent colors across periods
       color_domain <- global_color_domain()
 
-      # Create hover text with appropriate formatting
+      # Create hover text and value labels as columns (so they sort with data)
       if (is_rate) {
         data[, hover_text := paste0(
           "<b>", uf_abbrev, " - ", uf_name, "</b><br>",
@@ -1083,7 +1083,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
           if(lang_val == "en") "Region: " else "Regiao: ",
           region
         )]
-        value_text <- paste0(format_number_i18n(data$value, 1, lang_val), "%")
+        data[, value_text := paste0(format_number_i18n(value, 1, lang_val), "%")]
       } else {
         mil_label <- if(lang_val == "en") " thousand" else " mil"
         data[, hover_text := paste0(
@@ -1093,10 +1093,10 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
           if(lang_val == "en") "Region: " else "Regiao: ",
           region
         )]
-        value_text <- format_number_i18n(data$value / 1000, 0, lang_val)
+        data[, value_text := format_number_i18n(value / 1000, 0, lang_val)]
       }
 
-      # Sort by value for visualization
+      # Sort by value for visualization (all columns including text labels sort together)
       data <- data[order(-value)]
 
       # Create horizontal bar chart (more readable for 27 states)
@@ -1122,7 +1122,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
             len = 0.6
           )
         ),
-        text = value_text,
+        text = ~value_text,
         textposition = "outside",
         hovertext = ~hover_text,
         hoverinfo = "text"
