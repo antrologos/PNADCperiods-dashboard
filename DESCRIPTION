@@ -23,8 +23,7 @@ Imports:
     shinyjs,
     leaflet (>= 2.1.0),
     sf,
-    htmltools,
-    PNADCperiods
+    htmltools
 Suggests:
     seasonal,
     forecast,
@@ -33,5 +32,3 @@ Suggests:
     sidrar,
     deflateBR,
     openxlsx
-Remotes:
-    antrologos/PNADCperiods@feature/sidra-mensalization

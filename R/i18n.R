@@ -235,8 +235,8 @@ translations <- list(
       pt = "Dados atualizados recentemente. Aguarde %d segundos."
     ),
     package_unavailable = list(
-      en = "Required package not available: %s",
-      pt = "Pacote necessário não disponível: %s"
+      en = "SIDRA refresh requires %s package (run app locally with devtools::install_github('antrologos/PNADCperiods@feature/sidra-mensalization'))",
+      pt = "Atualização SIDRA requer pacote %s (execute o app localmente com devtools::install_github('antrologos/PNADCperiods@feature/sidra-mensalization'))"
     ),
     checking_new_data = list(en = "Checking for new data...", pt = "Verificando novos dados..."),
     querying_api = list(en = "Querying SIDRA API...", pt = "Consultando API SIDRA..."),
