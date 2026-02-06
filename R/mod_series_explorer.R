@@ -470,10 +470,11 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
 
     output$date_range_ui <- renderUI({
       lang_val <- get_lang()
-      months <- isolate(date_range_state$available_months)
+      # Don't isolate - we need to re-render when data becomes available
+      months <- date_range_state$available_months
 
       if (is.null(months) || length(months) == 0) {
-        return(NULL)
+        return(tags$p(class = "text-muted small", "Loading..."))
       }
 
       # Convert YYYYMM to Date objects for slider (use global yyyymm_to_date)
