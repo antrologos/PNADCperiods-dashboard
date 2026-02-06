@@ -539,7 +539,18 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
       )
     })
 
-    # Update available months when data changes
+    # Initialize available months from data (runs once at module load)
+    observe({
+      dt <- shared_data$monthly_sidra
+      if (!is.null(dt) && is.null(date_range_state$available_months)) {
+        months <- sort(unique(dt$anomesexato))
+        date_range_state$available_months <- months
+        date_range_state$start_month <- min(months)
+        date_range_state$end_month <- max(months)
+      }
+    })
+
+    # Update available months when data changes (for SIDRA refresh)
     observeEvent(shared_data$monthly_sidra, {
       dt <- shared_data$monthly_sidra
       if (!is.null(dt)) {
@@ -548,7 +559,7 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         date_range_state$start_month <- min(months)
         date_range_state$end_month <- max(months)
       }
-    }, ignoreNULL = TRUE)
+    }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
     # Track slider changes
     observeEvent(input$date_slider, {

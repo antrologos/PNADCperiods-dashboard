@@ -31,4 +31,7 @@ Suggests:
     ineq,
     sidrar,
     deflateBR,
-    openxlsx
+    openxlsx,
+    PNADCperiods
+Remotes:
+    antrologos/PNADCperiods@feature/sidra-mensalization
