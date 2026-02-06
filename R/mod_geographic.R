@@ -1131,12 +1131,16 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       # Layout with proper locale formatting
       separators <- get_plotly_separators(lang_val)
 
+      # Use global domain for consistent x-axis range across time periods
+      x_range <- c(0, color_domain[2] * 1.1)  # Start at 0, add 10% margin for labels
+
       p %>% layout(
         xaxis = list(
           title = "",
           tickformat = if(is_rate) ",.1f" else ",.0f",
           ticksuffix = if(is_rate) "%" else "",
-          zeroline = FALSE
+          zeroline = FALSE,
+          range = x_range  # Fix axis range for consistency
         ),
         yaxis = list(
           title = "",
