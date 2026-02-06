@@ -43,6 +43,20 @@ desktop.ini
 *.tmp
 *.temp
 .Rcheck/
+temp_*.R
+nul
+
+# Test/debug scripts (keep in scripts/ but don't commit)
+test_*.R
+test_*.html
+test_*_files/
+debug_*.R
+validate_data.R
+scripts/test_*.R
+scripts/debug_*.R
+scripts/fix_*.R
+scripts/verify_*.R
 
 # Test output
+tests/
 tests/testthat/_snaps/

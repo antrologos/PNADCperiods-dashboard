@@ -20,41 +20,37 @@ aboutUI <- function(id) {
       div(
         class = "card-header bg-primary text-white",
         tags$h4(class = "mb-0", style = "font-size: 1.25rem;",
-                "About PNADCperiods Dashboard")
+                textOutput(ns("title"), inline = TRUE))
       ),
       div(
         class = "card-body",
-        tags$h5("What is Mensalization?"),
-        tags$p(
-          "Mensalization is a statistical technique that converts Brazil's ",
-          "quarterly PNADC survey data into monthly estimates. The official ",
-          "IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar ",
-          "average reported for March), which smooth out short-term dynamics. ",
-          "This dashboard presents the monthly estimates recovered using the ",
-          "methodology developed by Marcos Hecksher."
-        ),
+        tags$h5(textOutput(ns("what_is_header"), inline = TRUE)),
+        tags$p(textOutput(ns("what_is_text"), inline = TRUE)),
 
-        tags$h5("Methodology"),
-        tags$p(
-          "The mensalization algorithm uses household panel information and ",
-          "birthday constraints from the PNADC questionnaire to identify which ",
-          "specific month each interview refers to. The process involves:"
-        ),
+        tags$h5(textOutput(ns("methodology_header"), inline = TRUE)),
+        tags$p(textOutput(ns("methodology_text"), inline = TRUE)),
         tags$ol(
-          tags$li("Building a crosswalk that maps observations to reference months"),
-          tags$li("Calibrating survey weights to match official population totals"),
-          tags$li("Computing monthly aggregates using the calibrated weights")
+          tags$li(textOutput(ns("methodology_step1"), inline = TRUE)),
+          tags$li(textOutput(ns("methodology_step2"), inline = TRUE)),
+          tags$li(textOutput(ns("methodology_step3"), inline = TRUE))
         ),
 
-        tags$h5("Data Sources"),
+        tags$h5(textOutput(ns("data_sources_header"), inline = TRUE)),
         tags$ul(
-          tags$li(tags$strong("SIDRA API:"), " Official IBGE statistics (86 series)"),
-          tags$li(tags$strong("PNADC Microdata:"), " Quarterly and annual survey data")
+          tags$li(
+            tags$strong("SIDRA API:"), " ",
+            textOutput(ns("data_source_sidra"), inline = TRUE)
+          ),
+          tags$li(
+            tags$strong("PNADC Microdata:"), " ",
+            textOutput(ns("data_source_microdata"), inline = TRUE)
+          )
         ),
 
-        tags$h5("Data Freshness"),
+        tags$h5(textOutput(ns("data_freshness_header"), inline = TRUE)),
         tags$p(
-          "SIDRA data: ", textOutput(ns("sidra_freshness"), inline = TRUE)
+          textOutput(ns("sidra_data_label"), inline = TRUE), " ",
+          textOutput(ns("sidra_freshness"), inline = TRUE)
         )
       )
     ),
@@ -64,7 +60,8 @@ aboutUI <- function(id) {
       class = "card mb-4",
       div(
         class = "card-header",
-        tags$span(style = "font-weight: 600;", "How to Cite")
+        tags$span(style = "font-weight: 600;",
+                  textOutput(ns("how_to_cite_header"), inline = TRUE))
       ),
       div(
         class = "card-body",
@@ -81,7 +78,7 @@ aboutUI <- function(id) {
         tags$p(
           class = "text-muted mb-0",
           style = "font-size: 0.85rem;",
-          "Please cite both the package and the original methodology paper."
+          textOutput(ns("cite_note"), inline = TRUE)
         )
       )
     ),
@@ -91,7 +88,8 @@ aboutUI <- function(id) {
       class = "card mb-4",
       div(
         class = "card-header",
-        tags$span(style = "font-weight: 600;", "Links")
+        tags$span(style = "font-weight: 600;",
+                  textOutput(ns("links_header"), inline = TRUE))
       ),
       div(
         class = "card-body",
@@ -107,7 +105,7 @@ aboutUI <- function(id) {
               tags$a(
                 href = "https://github.com/antrologos/PNADCperiods",
                 target = "_blank",
-                "GitHub Repository"
+                textOutput(ns("github_link"), inline = TRUE)
               )
             )
           ),
@@ -121,7 +119,7 @@ aboutUI <- function(id) {
               tags$a(
                 href = "https://antrologos.github.io/PNADCperiods/",
                 target = "_blank",
-                "Documentation"
+                textOutput(ns("documentation_link"), inline = TRUE)
               )
             )
           ),
@@ -135,7 +133,7 @@ aboutUI <- function(id) {
               tags$a(
                 href = "https://sidra.ibge.gov.br/",
                 target = "_blank",
-                "IBGE SIDRA"
+                textOutput(ns("ibge_sidra_link"), inline = TRUE)
               )
             )
           )
@@ -148,20 +146,15 @@ aboutUI <- function(id) {
       class = "card mb-4",
       div(
         class = "card-header",
-        tags$span(style = "font-weight: 600;", "Disclaimer")
+        tags$span(style = "font-weight: 600;",
+                  textOutput(ns("disclaimer_header"), inline = TRUE))
       ),
       div(
         class = "card-body text-muted",
-        tags$p(
-          "This dashboard presents estimates derived from official IBGE survey ",
-          "data. The mensalization methodology is an academic contribution and ",
-          "the monthly estimates are not official IBGE statistics. Users should ",
-          "consider the uncertainty inherent in survey-based estimates, especially ",
-          "for sub-national or sub-group analyses where sample sizes may be small."
-        ),
+        tags$p(textOutput(ns("disclaimer_text"), inline = TRUE)),
         tags$p(
           class = "mb-0",
-          "For official statistics, please consult the IBGE website directly."
+          textOutput(ns("disclaimer_official"), inline = TRUE)
         )
       )
     )
@@ -172,14 +165,48 @@ aboutUI <- function(id) {
 # Server
 # ------------------------------------------------------------------------------
 
-aboutServer <- function(id, shared_data) {
+aboutServer <- function(id, shared_data, lang = reactive("pt")) {
   moduleServer(id, function(input, output, session) {
+
+    # Helper to get current language
+    get_lang <- lang
+
+    # --------------------------------------------------------------------------
+    # Text outputs for i18n
+    # --------------------------------------------------------------------------
+
+    output$title <- renderText({ i18n("about.title", get_lang()) })
+    output$what_is_header <- renderText({ i18n("about.what_is", get_lang()) })
+    output$what_is_text <- renderText({ i18n("about.what_is_text", get_lang()) })
+    output$methodology_header <- renderText({ i18n("about.methodology", get_lang()) })
+    output$methodology_text <- renderText({ i18n("about.methodology_text", get_lang()) })
+    output$methodology_step1 <- renderText({ i18n("about.methodology_step1", get_lang()) })
+    output$methodology_step2 <- renderText({ i18n("about.methodology_step2", get_lang()) })
+    output$methodology_step3 <- renderText({ i18n("about.methodology_step3", get_lang()) })
+    output$data_sources_header <- renderText({ i18n("about.data_sources", get_lang()) })
+    output$data_source_sidra <- renderText({ i18n("about.data_source_sidra", get_lang()) })
+    output$data_source_microdata <- renderText({ i18n("about.data_source_microdata", get_lang()) })
+    output$data_freshness_header <- renderText({ i18n("about.data_freshness", get_lang()) })
+    output$sidra_data_label <- renderText({ i18n("about.sidra_data", get_lang()) })
+    output$how_to_cite_header <- renderText({ i18n("about.how_to_cite", get_lang()) })
+    output$cite_note <- renderText({ i18n("about.cite_note", get_lang()) })
+    output$links_header <- renderText({ i18n("about.links", get_lang()) })
+    output$github_link <- renderText({ i18n("about.github", get_lang()) })
+    output$documentation_link <- renderText({ i18n("about.documentation", get_lang()) })
+    output$ibge_sidra_link <- renderText({ i18n("about.ibge_sidra", get_lang()) })
+    output$disclaimer_header <- renderText({ i18n("about.disclaimer", get_lang()) })
+    output$disclaimer_text <- renderText({ i18n("about.disclaimer_text", get_lang()) })
+    output$disclaimer_official <- renderText({ i18n("about.disclaimer_official", get_lang()) })
+
+    # --------------------------------------------------------------------------
+    # Data freshness output
+    # --------------------------------------------------------------------------
 
     output$sidra_freshness <- renderText({
       if (!is.null(shared_data$last_updated)) {
         format(shared_data$last_updated, "%Y-%m-%d %H:%M")
       } else {
-        "Not available - click 'Refresh' in Series Explorer"
+        i18n("about.not_available_refresh", get_lang())
       }
     })
 

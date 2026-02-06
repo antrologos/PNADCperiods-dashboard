@@ -178,9 +178,11 @@ yyyymm_to_date <- function(yyyymm) {
 # IBGE Color Palette
 # ==============================================================================
 
+# Colorblind-friendly palette (avoids red-green confusion)
 ibge_colors <- list(
-  primary = "#1976D2",
-  secondary = "#E53935",
+  primary = "#1976D2",      # Blue - good for all color vision types
+  secondary = "#FF7043",    # Orange instead of red - colorblind-friendly
+  tertiary = "#00ACC1",     # Teal/Cyan instead of green - colorblind-friendly
   gray = "#666666",
   light_gray = "#CCCCCC",
   background = "#F5F5F5"

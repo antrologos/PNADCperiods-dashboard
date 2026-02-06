@@ -201,20 +201,42 @@ geographic_indicators <- data.table::data.table(
 # ==============================================================================
 
 #' Get geographic theme choices for dropdown
+#' @param lang Language for labels ("en" or "pt")
+#' @param available_indicators Optional vector of indicator IDs available in the data.
+#'   If provided, only returns themes that have at least one available indicator.
 #' @keywords internal
-get_geo_theme_choices <- function(lang = "pt") {
-  themes <- unique(geographic_indicators$theme)
+get_geo_theme_choices <- function(lang = "pt", available_indicators = NULL) {
+  filtered <- geographic_indicators
+
+  # Filter by available indicators if provided
+  if (!is.null(available_indicators) && length(available_indicators) > 0) {
+    filtered <- filtered[indicator_id %in% available_indicators]
+    if (nrow(filtered) == 0) return(character(0))
+  }
+
+  themes <- unique(filtered$theme)
   labels <- sapply(themes, function(t) get_theme_label(t, lang))
   setNames(themes, labels)
 }
 
 #' Get geographic category choices for dropdown
+#' @param selected_theme Theme to filter by
+#' @param lang Language for labels ("en" or "pt")
+#' @param available_indicators Optional vector of indicator IDs available in the data.
+#'   If provided, only returns categories that have at least one available indicator.
 #' @keywords internal
-get_geo_category_choices <- function(selected_theme, lang = "pt") {
+get_geo_category_choices <- function(selected_theme, lang = "pt",
+                                      available_indicators = NULL) {
   if (is.null(selected_theme) || selected_theme == "") return(character(0))
 
   filtered <- geographic_indicators[theme == selected_theme]
   if (nrow(filtered) == 0) return(character(0))
+
+  # Filter by available indicators if provided
+  if (!is.null(available_indicators) && length(available_indicators) > 0) {
+    filtered <- filtered[indicator_id %in% available_indicators]
+    if (nrow(filtered) == 0) return(character(0))
+  }
 
   categories <- unique(filtered$theme_category)
   labels <- sapply(categories, function(c) get_theme_category_label(c, lang))
@@ -222,8 +244,14 @@ get_geo_category_choices <- function(selected_theme, lang = "pt") {
 }
 
 #' Get geographic indicator choices for dropdown
+#' @param selected_theme Theme to filter by
+#' @param selected_category Category to filter by
+#' @param lang Language for labels ("en" or "pt")
+#' @param available_indicators Optional vector of indicator IDs available in the data.
+#'   If provided, only returns indicators that exist in this vector.
 #' @keywords internal
-get_geo_indicator_choices <- function(selected_theme, selected_category, lang = "pt") {
+get_geo_indicator_choices <- function(selected_theme, selected_category, lang = "pt",
+                                       available_indicators = NULL) {
   if (is.null(selected_theme) || selected_theme == "" ||
       is.null(selected_category) || selected_category == "") {
     return(character(0))
@@ -232,6 +260,12 @@ get_geo_indicator_choices <- function(selected_theme, selected_category, lang = 
   filtered <- geographic_indicators[theme == selected_theme &
                                       theme_category == selected_category]
   if (nrow(filtered) == 0) return(character(0))
+
+  # Filter by available indicators if provided
+  if (!is.null(available_indicators) && length(available_indicators) > 0) {
+    filtered <- filtered[indicator_id %in% available_indicators]
+    if (nrow(filtered) == 0) return(character(0))
+  }
 
   desc_col <- if (lang == "en") "description_en" else "description_pt"
   setNames(filtered$indicator_id, filtered[[desc_col]])
@@ -328,13 +362,7 @@ geographicUI <- function(id) {
         ),
         div(
           class = "ms-auto",
-          selectInput(
-            ns("animation_speed"),
-            label = NULL,
-            choices = c("Slow" = "2000", "Normal" = "1000", "Fast" = "500"),
-            selected = "1000",
-            width = "100px"
-          )
+          uiOutput(ns("animation_speed_ui"))
         )
       ),
 
@@ -344,14 +372,8 @@ geographicUI <- function(id) {
       tags$p(style = "font-size: 0.7rem; font-weight: 600; color: #6c757d; margin-bottom: 0.5rem;",
              textOutput(ns("label_display_options"), inline = TRUE)),
 
-      # View type toggle
-      radioButtons(
-        ns("view_type"),
-        label = NULL,
-        choices = c("Map" = "map", "Bar Chart" = "bar"),
-        selected = "map",
-        inline = TRUE
-      ),
+      # View type toggle (rendered dynamically for i18n)
+      uiOutput(ns("view_type_ui")),
 
       checkboxInput(
         ns("show_labels"),
@@ -371,7 +393,7 @@ geographicUI <- function(id) {
 
       # Download
       tags$p(style = "font-size: 0.7rem; font-weight: 600; color: #6c757d; margin-bottom: 0.5rem;",
-             "EXPORT"),
+             textOutput(ns("label_export"), inline = TRUE)),
       div(
         class = "d-flex gap-1 flex-wrap",
         downloadButton(ns("download_csv"), "CSV", class = "btn-sm btn-outline-secondary", style = "font-size: 0.75rem;"),
@@ -532,15 +554,67 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     output$label_category <- renderText({ toupper(i18n("controls.category", get_lang())) })
     output$label_indicator <- renderText({ toupper(i18n("controls.series", get_lang())) })
     output$label_period <- renderText({ toupper(i18n("geographic.select_period", get_lang())) })
-    output$label_display_options <- renderText({ toupper(if(get_lang() == "en") "OPTIONS" else "OPCOES") })
-    output$label_show_labels <- renderText({ if(get_lang() == "en") "Show state labels" else "Mostrar siglas dos estados" })
-    output$label_show_table <- renderText({ if(get_lang() == "en") "Show state table" else "Mostrar tabela por estado" })
-    output$label_summary <- renderText({ if(get_lang() == "en") "Regional Summary" else "Resumo Regional" })
-    output$label_table <- renderText({ if(get_lang() == "en") "State Data" else "Dados por Estado" })
-    output$label_min_state <- renderText({ if(get_lang() == "en") "Lowest" else "Menor" })
-    output$label_max_state <- renderText({ if(get_lang() == "en") "Highest" else "Maior" })
+    output$label_display_options <- renderText({ i18n("geographic.options", get_lang()) })
+    output$label_show_labels <- renderText({ i18n("geographic.show_labels", get_lang()) })
+    output$label_show_table <- renderText({ i18n("geographic.show_table", get_lang()) })
+    output$label_summary <- renderText({ i18n("geographic.summary", get_lang()) })
+    output$label_table <- renderText({ i18n("geographic.table_header", get_lang()) })
+    output$label_min_state <- renderText({ i18n("geographic.lowest", get_lang()) })
+    output$label_max_state <- renderText({ i18n("geographic.highest", get_lang()) })
     output$label_brazil_avg <- renderText({ i18n("geographic.brazil", get_lang()) })
-    output$label_cv <- renderText({ if(get_lang() == "en") "Dispersion (CV)" else "Dispersao (CV)" })
+    output$label_cv <- renderText({ i18n("geographic.dispersion", get_lang()) })
+    output$label_export <- renderText({ i18n("geographic.export", get_lang()) })
+
+    # --------------------------------------------------------------------------
+    # Dynamic UI: Animation speed dropdown with i18n
+    # --------------------------------------------------------------------------
+    output$animation_speed_ui <- renderUI({
+      lang_val <- get_lang()
+      choices <- c(
+        setNames("2000", i18n("geographic.speed_slow", lang_val)),
+        setNames("1000", i18n("geographic.speed_normal", lang_val)),
+        setNames("500", i18n("geographic.speed_fast", lang_val))
+      )
+      # Preserve current selection if available
+      current_val <- isolate(input$animation_speed)
+      selected <- if (!is.null(current_val) && current_val %in% c("2000", "1000", "500")) {
+        current_val
+      } else {
+        "1000"
+      }
+      selectInput(
+        session$ns("animation_speed"),
+        label = NULL,
+        choices = choices,
+        selected = selected,
+        width = "100px"
+      )
+    })
+
+    # --------------------------------------------------------------------------
+    # Dynamic UI: View type radio buttons with i18n
+    # --------------------------------------------------------------------------
+    output$view_type_ui <- renderUI({
+      lang_val <- get_lang()
+      choices <- c(
+        setNames("map", i18n("geographic.view_map", lang_val)),
+        setNames("bar", i18n("geographic.view_bar", lang_val))
+      )
+      # Preserve current selection if available
+      current_val <- isolate(input$view_type)
+      selected <- if (!is.null(current_val) && current_val %in% c("map", "bar")) {
+        current_val
+      } else {
+        "map"
+      }
+      radioButtons(
+        session$ns("view_type"),
+        label = NULL,
+        choices = choices,
+        selected = selected,
+        inline = TRUE
+      )
+    })
 
     # --------------------------------------------------------------------------
     # Load geographic data
@@ -582,19 +656,40 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     })
 
     # --------------------------------------------------------------------------
-    # Update theme choices (initial load and language change)
+    # Update theme choices (initial load, language change, or data change)
     # --------------------------------------------------------------------------
 
     observe({
       lang_val <- get_lang()
-      themes <- get_geo_theme_choices(lang_val)
+
+      # Get available indicators from the actual data
+      data <- geo_data()
+      available_inds <- if (!is.null(data) && "indicator" %in% names(data)) {
+        unique(data$indicator)
+      } else {
+        NULL
+      }
+
+      themes <- get_geo_theme_choices(lang_val, available_indicators = available_inds)
+
+      # Preserve current selection if still valid
+      current_theme <- isolate(input$theme)
+      selected <- if (!is.null(current_theme) && current_theme %in% themes) {
+        current_theme
+      } else if ("labor_market" %in% themes) {
+        "labor_market"
+      } else if (length(themes) > 0) {
+        themes[1]
+      } else {
+        NULL
+      }
 
       updateSelectInput(
         session, "theme",
         choices = themes,
-        selected = if ("labor_market" %in% themes) "labor_market" else themes[1]
+        selected = selected
       )
-    }) |> bindEvent(get_lang(), once = FALSE)
+    }) |> bindEvent(list(get_lang(), geo_data()), once = FALSE)
 
     # --------------------------------------------------------------------------
     # Update category choices when theme changes
@@ -604,7 +699,18 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       req(input$theme)
       lang_val <- get_lang()
 
-      category_choices <- get_geo_category_choices(input$theme, lang_val)
+      # Get available indicators from the actual data
+      data <- geo_data()
+      available_inds <- if (!is.null(data) && "indicator" %in% names(data)) {
+        unique(data$indicator)
+      } else {
+        NULL
+      }
+
+      category_choices <- get_geo_category_choices(
+        input$theme, lang_val,
+        available_indicators = available_inds
+      )
 
       # Default selection based on theme
       default_cat <- if (length(category_choices) > 0) {
@@ -632,8 +738,17 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       req(input$theme, input$category)
       lang_val <- get_lang()
 
+      # Get available indicators from the actual data
+      data <- geo_data()
+      available_inds <- if (!is.null(data) && "indicator" %in% names(data)) {
+        unique(data$indicator)
+      } else {
+        NULL
+      }
+
       indicator_choices <- get_geo_indicator_choices(
-        input$theme, input$category, lang_val
+        input$theme, input$category, lang_val,
+        available_indicators = available_inds
       )
 
       # Default to first indicator or unemployment rate if available
@@ -654,16 +769,9 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       )
     }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
-    # Update view type labels based on language
-    observe({
-      lang_val <- get_lang()
-      if (lang_val == "en") {
-        choices <- c("Map" = "map", "Bar Chart" = "bar")
-      } else {
-        choices <- c("Mapa" = "map", "Grafico de Barras" = "bar")
-      }
-      updateRadioButtons(session, "view_type", choices = choices, inline = TRUE)
-    }) |> bindEvent(get_lang(), once = FALSE)
+    # NOTE: view_type radio buttons are now rendered dynamically via
+    # output$view_type_ui (renderUI) which handles language changes.
+    # The previous updateRadioButtons observer was removed to avoid conflicts.
 
     # --------------------------------------------------------------------------
     # Dynamic period slider
@@ -1105,7 +1213,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       req(data, nrow(data) > 0)
       lang_val <- get_lang()
       unit_type <- current_unit_type()
-      # Brazil total (sum for levels, mean for rates)
+      # State average (unweighted mean for rates, sum for levels)
       if (unit_type == "percent") {
         brazil_val <- mean(data$value, na.rm = TRUE)
       } else {
@@ -1173,13 +1281,30 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       big_mark <- if(lang_val == "pt") "." else ","
       dec_mark <- if(lang_val == "pt") "," else "."
 
+      # DT table localization
+      dt_language <- list(
+        search = i18n("data_panel.search", lang_val),
+        lengthMenu = i18n("data_panel.length_menu", lang_val),
+        info = i18n("data_panel.info", lang_val),
+        infoEmpty = i18n("data_panel.info_empty", lang_val),
+        infoFiltered = i18n("data_panel.info_filtered", lang_val),
+        zeroRecords = i18n("data_panel.zero_records", lang_val),
+        paginate = list(
+          first = i18n("data_panel.paginate_first", lang_val),
+          last = i18n("data_panel.paginate_last", lang_val),
+          `next` = i18n("data_panel.paginate_next", lang_val),
+          previous = i18n("data_panel.paginate_previous", lang_val)
+        )
+      )
+
       datatable(
         dt_display,
         options = list(
           pageLength = 10,
           scrollX = TRUE,
           dom = 'frtip',
-          order = list(list(3, 'desc'))
+          order = list(list(3, 'desc')),
+          language = dt_language
         ),
         rownames = FALSE,
         style = "bootstrap4",
@@ -1205,8 +1330,6 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
         if (length(current_idx) == 0) current_idx <- 1
 
         # Start animation
-        speed <- as.integer(input$animation_speed)
-
         animation_state$timer <- observe({
           if (animation_state$running) {
             current_idx <- which(periods == as.integer(input$period))
@@ -1221,6 +1344,8 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
               selected = as.character(periods[next_idx])
             )
 
+            # Read speed inside loop so changes take effect during playback
+            speed <- as.integer(input$animation_speed)
             invalidateLater(speed, session)
           }
         })

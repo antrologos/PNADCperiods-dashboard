@@ -48,20 +48,24 @@ translations <- list(
     select_theme = list(en = "Select theme...", pt = "Selecione o tema..."),
     select_category = list(en = "Select category...", pt = "Selecione a categoria..."),
     select_subcategory = list(en = "Select subcategory...", pt = "Selecione a subcategoria..."),
-    select_series = list(en = "Select series...", pt = "Selecione a série...")
+    select_series = list(en = "Select series...", pt = "Selecione a série..."),
+    display = list(en = "Display", pt = "Exibição"),
+    export = list(en = "Export", pt = "Exportar")
   ),
 
   # ============================================================================
   # Summary Statistics
   # ============================================================================
   stats = list(
+    title = list(en = "Summary Statistics", pt = "Estatísticas Resumidas"),
     latest = list(en = "Latest", pt = "Último"),
     yoy_change = list(en = "YoY Change", pt = "Var. Anual"),
     min = list(en = "Minimum", pt = "Mínimo"),
     max = list(en = "Maximum", pt = "Máximo"),
     mean = list(en = "Average", pt = "Média"),
     period = list(en = "Period", pt = "Período"),
-    observations = list(en = "Observations", pt = "Observações")
+    observations = list(en = "Observations", pt = "Observações"),
+    na = list(en = "N/A", pt = "N/D")
   ),
 
   # ============================================================================
@@ -94,13 +98,16 @@ translations <- list(
   # Buttons & Actions
   # ============================================================================
   buttons = list(
-    download_csv = list(en = "Download CSV", pt = "Baixar CSV"),
-    download_png = list(en = "Download PNG", pt = "Baixar PNG"),
+    download_csv = list(en = "CSV", pt = "CSV"),
+    download_png = list(en = "PNG", pt = "PNG"),
+    download_excel = list(en = "Excel", pt = "Excel"),
     refresh = list(en = "Refresh", pt = "Atualizar"),
+    refresh_tooltip = list(en = "Refresh from SIDRA API", pt = "Atualizar da API SIDRA"),
     apply = list(en = "Apply", pt = "Aplicar"),
     reset = list(en = "Reset", pt = "Limpar"),
     show_data = list(en = "Show Data", pt = "Ver Dados"),
-    hide_data = list(en = "Hide Data", pt = "Ocultar Dados")
+    hide_data = list(en = "Hide Data", pt = "Ocultar Dados"),
+    show = list(en = "Show", pt = "Ver")
   ),
 
   # ============================================================================
@@ -116,7 +123,19 @@ translations <- list(
     difference = list(en = "Difference", pt = "Diferença"),
     year = list(en = "Year", pt = "Ano"),
     month = list(en = "Month", pt = "Mês"),
-    series_info = list(en = "Series Info", pt = "Informação da Série")
+    series_info = list(en = "Series Info", pt = "Informação da Série"),
+    no_description = list(en = "No description available", pt = "Descrição não disponível"),
+    # DT table localization
+    search = list(en = "Filter:", pt = "Filtrar:"),
+    length_menu = list(en = "Show _MENU_ entries", pt = "Mostrar _MENU_ registros"),
+    info = list(en = "Showing _START_ to _END_ of _TOTAL_ entries", pt = "Mostrando _START_ a _END_ de _TOTAL_ registros"),
+    info_empty = list(en = "Showing 0 to 0 of 0 entries", pt = "Mostrando 0 a 0 de 0 registros"),
+    info_filtered = list(en = "(filtered from _MAX_ total entries)", pt = "(filtrado de _MAX_ registros totais)"),
+    zero_records = list(en = "No matching records found", pt = "Nenhum registro encontrado"),
+    paginate_first = list(en = "First", pt = "Primeira"),
+    paginate_last = list(en = "Last", pt = "Última"),
+    paginate_next = list(en = "Next", pt = "Próxima"),
+    paginate_previous = list(en = "Previous", pt = "Anterior")
   ),
 
   # ============================================================================
@@ -133,6 +152,10 @@ translations <- list(
     source = list(
       en = "Source: IBGE/PNAD Contínua, mensalized by PNADCperiods",
       pt = "Fonte: IBGE/PNAD Contínua, mensalizado pelo PNADCperiods"
+    ),
+    caption = list(
+      en = "Source: PNADCperiods | Generated: %s",
+      pt = "Fonte: PNADCperiods | Gerado: %s"
     ),
     axis_date = list(en = "Date", pt = "Data"),
     axis_value = list(en = "Value", pt = "Valor"),
@@ -151,7 +174,13 @@ translations <- list(
     seasonal_x13 = list(en = "Seasonal (X-13)", pt = "Sazonal (X-13)"),
     seasonal_stl = list(en = "Seasonal (STL)", pt = "Sazonal (STL)"),
     x13_arima = list(en = "X-13 ARIMA", pt = "X-13 ARIMA"),
-    stl = list(en = "STL", pt = "STL")
+    stl = list(en = "STL", pt = "STL"),
+    # Difference plot titles
+    diff_monthly_quarterly = list(en = "Difference: Monthly - Quarterly", pt = "Diferença: Mensal - Trimestral"),
+    diff_seasonal_x13 = list(en = "Seasonal Component (X-13 ARIMA)", pt = "Componente Sazonal (X-13 ARIMA)"),
+    diff_seasonal_stl = list(en = "Seasonal Component (STL)", pt = "Componente Sazonal (STL)"),
+    diff_seasonal_comparison = list(en = "Seasonal Components Comparison", pt = "Comparação de Componentes Sazonais"),
+    diff_generic = list(en = "Difference", pt = "Diferença")
   ),
 
   # ============================================================================
@@ -159,15 +188,92 @@ translations <- list(
   # ============================================================================
   messages = list(
     loading = list(en = "Loading...", pt = "Carregando..."),
+    loading_data = list(en = "Loading data...", pt = "Carregando dados..."),
     fetching = list(en = "Fetching from SIDRA API...", pt = "Buscando da API SIDRA..."),
     data_updated = list(en = "Data updated successfully!", pt = "Dados atualizados com sucesso!"),
+    data_updated_detail = list(
+      en = "Data updated successfully! Added %d new periods.",
+      pt = "Dados atualizados com sucesso! Adicionados %d novos períodos."
+    ),
     no_new_data = list(en = "No new data available", pt = "Não há dados novos disponíveis"),
+    no_new_data_detail = list(
+      en = "No new data available. Latest data point: %s",
+      pt = "Não há dados novos disponíveis. Último dado: %s"
+    ),
     error_fetch = list(en = "Error fetching data", pt = "Erro ao buscar dados"),
+    error_generic = list(en = "An error occurred. Please try again.", pt = "Ocorreu um erro. Por favor, tente novamente."),
+    data_dir_not_found = list(en = "Data directory not found. Changes saved to memory only.", pt = "Diretório de dados não encontrado. Alterações salvas apenas na memória."),
+    excel_fallback_csv = list(en = "Excel package not available. Downloaded as CSV instead.", pt = "Pacote Excel não disponível. Baixado como CSV."),
     last_updated = list(en = "Last updated", pt = "Última atualização"),
     select_series = list(en = "Please select a series", pt = "Por favor, selecione uma série"),
     no_data = list(en = "No data available", pt = "Dados não disponíveis"),
+    no_data_range = list(
+      en = "No data available for the selected series and date range",
+      pt = "Não há dados disponíveis para a série e período selecionados"
+    ),
+    not_available = list(en = "Not available", pt = "Não disponível"),
     processing = list(en = "Processing...", pt = "Processando..."),
-    deseasonalizing = list(en = "Applying seasonal adjustment...", pt = "Aplicando ajuste sazonal...")
+    deseasonalizing = list(en = "Applying seasonal adjustment...", pt = "Aplicando ajuste sazonal..."),
+    quarterly_not_available = list(
+      en = "Quarterly data not available for this series",
+      pt = "Dados trimestrais não disponíveis para esta série"
+    ),
+    no_difference_data = list(
+      en = "No difference data to display",
+      pt = "Não há dados de diferença para exibir"
+    ),
+    no_difference_range = list(
+      en = "No difference data in selected date range",
+      pt = "Não há dados de diferença no período selecionado"
+    ),
+    seasonal_unavailable = list(
+      en = "Seasonal adjustment unavailable. Install package(s): %s",
+      pt = "Ajuste sazonal indisponível. Instale o(s) pacote(s): %s"
+    ),
+    refresh_cooldown = list(
+      en = "Data was recently refreshed. Please wait %d seconds.",
+      pt = "Dados atualizados recentemente. Aguarde %d segundos."
+    ),
+    package_unavailable = list(
+      en = "Required package not available: %s",
+      pt = "Pacote necessário não disponível: %s"
+    ),
+    checking_new_data = list(en = "Checking for new data...", pt = "Verificando novos dados..."),
+    querying_api = list(en = "Querying SIDRA API...", pt = "Consultando API SIDRA..."),
+    found_new_periods = list(
+      en = "Found %d new periods. Mensalizing...",
+      pt = "Encontrados %d novos períodos. Mensalizando..."
+    ),
+    mensalizing = list(en = "Mensalizing new data...", pt = "Mensalizando novos dados..."),
+    computing_deseason = list(
+      en = "Computing de-seasonalization for top series...",
+      pt = "Calculando dessazonalização para as principais séries..."
+    ),
+    saving_data = list(en = "Saving updated data...", pt = "Salvando dados atualizados..."),
+    x13_not_available = list(
+      en = "X-13 adjustment not available",
+      pt = "Ajuste X-13 não disponível"
+    ),
+    stl_not_available = list(
+      en = "STL adjustment not available",
+      pt = "Ajuste STL não disponível"
+    ),
+    no_x13_data = list(
+      en = "No X-13 adjusted data available",
+      pt = "Não há dados ajustados por X-13 disponíveis"
+    ),
+    no_stl_data = list(
+      en = "No STL adjusted data available",
+      pt = "Não há dados ajustados por STL disponíveis"
+    ),
+    no_seasonal_range = list(
+      en = "No seasonal data in selected date range",
+      pt = "Não há dados sazonais no período selecionado"
+    ),
+    updating_seasonal = list(
+      en = "Updating seasonal adjustments...",
+      pt = "Atualizando ajustes sazonais..."
+    )
   ),
 
   # ============================================================================
@@ -245,20 +351,65 @@ translations <- list(
   # About Page
   # ============================================================================
   about = list(
-    title = list(en = "About PNADCperiods", pt = "Sobre o PNADCperiods"),
-    what_is = list(en = "What is mensalization?", pt = "O que é mensalização?"),
+    title = list(
+      en = "About PNADCperiods Dashboard",
+      pt = "Sobre o Painel PNADCperiods"
+    ),
+    what_is = list(en = "What is Mensalization?", pt = "O que e Mensalizacao?"),
     what_is_text = list(
-      en = "Mensalization is a methodology that converts Brazil's quarterly PNADC survey data into monthly time series. This enables higher-frequency analysis of labor market indicators.",
-      pt = "Mensalização é uma metodologia que converte os dados trimestrais da PNADC em séries temporais mensais. Isso permite análise de indicadores do mercado de trabalho em frequência mais alta."
+      en = "Mensalization is a statistical technique that converts Brazil's quarterly PNADC survey data into monthly estimates. The official IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar average reported for March), which smooth out short-term dynamics. This dashboard presents the monthly estimates recovered using the methodology developed by Marcos Hecksher.",
+      pt = "Mensalizacao e uma tecnica estatistica que converte os dados trimestrais da PNADC em estimativas mensais. As divulgacoes oficiais do IBGE reportam estimativas de 'trimestre movel' (ex: media Jan-Fev-Mar reportada para Marco), que suavizam dinamicas de curto prazo. Este painel apresenta as estimativas mensais recuperadas usando a metodologia desenvolvida por Marcos Hecksher."
     ),
     methodology = list(en = "Methodology", pt = "Metodologia"),
+    methodology_text = list(
+      en = "The mensalization algorithm uses household panel information and birthday constraints from the PNADC questionnaire to identify which specific month each interview refers to. The process involves:",
+      pt = "O algoritmo de mensalizacao usa informacoes do painel domiciliar e restricoes de aniversario do questionario da PNADC para identificar a qual mes especifico cada entrevista se refere. O processo envolve:"
+    ),
+    methodology_step1 = list(
+      en = "Building a crosswalk that maps observations to reference months",
+      pt = "Construir uma tabela de correspondencia que mapeia observacoes aos meses de referencia"
+    ),
+    methodology_step2 = list(
+      en = "Calibrating survey weights to match official population totals",
+      pt = "Calibrar os pesos amostrais para corresponder aos totais populacionais oficiais"
+    ),
+    methodology_step3 = list(
+      en = "Computing monthly aggregates using the calibrated weights",
+      pt = "Calcular agregados mensais usando os pesos calibrados"
+    ),
     data_sources = list(en = "Data Sources", pt = "Fontes de Dados"),
+    data_source_sidra = list(
+      en = "Official IBGE statistics (86 series)",
+      pt = "Estatisticas oficiais do IBGE (86 series)"
+    ),
+    data_source_microdata = list(
+      en = "Quarterly and annual survey data",
+      pt = "Dados de pesquisa trimestrais e anuais"
+    ),
+    data_freshness = list(en = "Data Freshness", pt = "Atualizacao dos Dados"),
+    sidra_data = list(en = "SIDRA data:", pt = "Dados SIDRA:"),
+    not_available_refresh = list(
+      en = "Not available - click 'Refresh' in Series Explorer",
+      pt = "Nao disponivel - clique em 'Atualizar' no Explorador de Series"
+    ),
     how_to_cite = list(en = "How to Cite", pt = "Como Citar"),
-    authors = list(en = "Authors", pt = "Autores"),
+    cite_note = list(
+      en = "Please cite both the package and the original methodology paper.",
+      pt = "Por favor, cite tanto o pacote quanto o artigo original da metodologia."
+    ),
     links = list(en = "Links", pt = "Links"),
-    github = list(en = "GitHub Repository", pt = "Repositório GitHub"),
-    documentation = list(en = "Documentation", pt = "Documentação"),
-    ibge = list(en = "IBGE Official Sources", pt = "Fontes Oficiais do IBGE")
+    github = list(en = "GitHub Repository", pt = "Repositorio GitHub"),
+    documentation = list(en = "Documentation", pt = "Documentacao"),
+    ibge_sidra = list(en = "IBGE SIDRA", pt = "SIDRA IBGE"),
+    disclaimer = list(en = "Disclaimer", pt = "Aviso Legal"),
+    disclaimer_text = list(
+      en = "This dashboard presents estimates derived from official IBGE survey data. The mensalization methodology is an academic contribution and the monthly estimates are not official IBGE statistics. Users should consider the uncertainty inherent in survey-based estimates, especially for sub-national or sub-group analyses where sample sizes may be small.",
+      pt = "Este painel apresenta estimativas derivadas de dados oficiais de pesquisas do IBGE. A metodologia de mensalizacao e uma contribuicao academica e as estimativas mensais nao sao estatisticas oficiais do IBGE. Os usuarios devem considerar a incerteza inerente a estimativas baseadas em pesquisas, especialmente para analises subnacionais ou de subgrupos onde os tamanhos amostrais podem ser pequenos."
+    ),
+    disclaimer_official = list(
+      en = "For official statistics, please consult the IBGE website directly.",
+      pt = "Para estatisticas oficiais, consulte diretamente o site do IBGE."
+    )
   ),
 
   # ============================================================================
@@ -270,10 +421,27 @@ translations <- list(
     select_period = list(en = "Select Period", pt = "Selecione o Período"),
     state = list(en = "State", pt = "Estado"),
     region = list(en = "Region", pt = "Região"),
-    brazil = list(en = "Brazil", pt = "Brasil"),
+    brazil = list(en = "State Avg.", pt = "Média Estados"),
     animate = list(en = "Animate", pt = "Animar"),
     play = list(en = "Play", pt = "Reproduzir"),
-    pause = list(en = "Pause", pt = "Pausar")
+    pause = list(en = "Pause", pt = "Pausar"),
+    # Display options
+    options = list(en = "OPTIONS", pt = "OPCOES"),
+    show_labels = list(en = "Show state labels", pt = "Mostrar siglas dos estados"),
+    show_table = list(en = "Show state table", pt = "Mostrar tabela por estado"),
+    summary = list(en = "Regional Summary", pt = "Resumo Regional"),
+    table_header = list(en = "State Data", pt = "Dados por Estado"),
+    lowest = list(en = "Lowest", pt = "Menor"),
+    highest = list(en = "Highest", pt = "Maior"),
+    dispersion = list(en = "Dispersion (CV)", pt = "Dispersao (CV)"),
+    export = list(en = "EXPORT", pt = "EXPORTAR"),
+    # Animation speed
+    speed_slow = list(en = "Slow", pt = "Lento"),
+    speed_normal = list(en = "Normal", pt = "Normal"),
+    speed_fast = list(en = "Fast", pt = "Rapido"),
+    # View type
+    view_map = list(en = "Map", pt = "Mapa"),
+    view_bar = list(en = "Bar Chart", pt = "Grafico de Barras")
   ),
 
   # ============================================================================
@@ -587,8 +755,16 @@ get_series_choices <- function(metadata, selected_theme,
     }
 
     # Apply subcategory filter if provided and not "All" (empty string)
+    # BUT only if the data has non-NA subcategories - this prevents stale
+    # subcategory values from filtering out categories that don't use subcategories
     if (!is.null(selected_subcategory) && selected_subcategory != "") {
-      filtered <- filtered[filtered$subcategory == selected_subcategory, ]
+      # Check if any rows have non-NA subcategories
+      has_subcategories <- any(!is.na(filtered$subcategory))
+      if (has_subcategories) {
+        filtered <- filtered[!is.na(filtered$subcategory) &
+                             filtered$subcategory == selected_subcategory, ]
+      }
+      # If no rows have subcategories, skip the filter entirely
     }
   } else if ("category" %in% names(metadata)) {
     # Old structure: category only (selected_theme is actually old category)
@@ -740,9 +916,14 @@ format_series_value <- function(x, unit = "thousands", lang = "pt",
     }
   } else if (unit %in% c("currency", "currency_millions")) {
     # Currency: R$ prefix, no decimals for display
-    formatted <- format_number_i18n(x, digits = 0, lang = lang)
+    # Handle negative values correctly: -R$ 1.234 instead of R$ -1.234
+    is_negative <- x < 0
+    formatted <- format_number_i18n(abs(x), digits = 0, lang = lang)
     if (include_unit) {
-      formatted <- paste0("R$ ", formatted)
+      prefix <- if (is_negative) "-R$ " else "R$ "
+      formatted <- paste0(prefix, formatted)
+    } else if (is_negative) {
+      formatted <- paste0("-", formatted)
     }
   } else if (unit == "index") {
     # Index: 2 decimals

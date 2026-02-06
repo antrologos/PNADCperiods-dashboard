@@ -17,6 +17,7 @@ source("R/mod_about.R")
 ui <- page_navbar(
   title = tags$span(
     tags$img(src = "logo.png", height = "30px", style = "margin-right: 10px;",
+             alt = "PNADCperiods logo",
              onerror = "this.style.display='none'"),
     "PNADCperiods"
   ),
@@ -112,15 +113,18 @@ ui <- page_navbar(
   nav_item(
     tags$div(
       class = "d-flex align-items-center gap-3",
-      # Language toggle
+      # Language toggle with keyboard support and ARIA labels
       tags$div(
         class = "lang-toggle btn-group btn-group-sm",
         role = "group",
+        `aria-label` = "Language selection",
         tags$button(
           id = "lang_en",
           type = "button",
           class = "btn btn-outline-light",
           onclick = "setLanguage('en')",
+          onkeypress = "if(event.key==='Enter'||event.key===' '){event.preventDefault();setLanguage('en');}",
+          `aria-label` = "Switch to English",
           "EN"
         ),
         tags$button(
@@ -128,6 +132,8 @@ ui <- page_navbar(
           type = "button",
           class = "btn btn-outline-light active",
           onclick = "setLanguage('pt')",
+          onkeypress = "if(event.key==='Enter'||event.key===' '){event.preventDefault();setLanguage('pt');}",
+          `aria-label` = "Mudar para Portugues",
           "PT"
         )
       ),
@@ -215,7 +221,7 @@ server <- function(input, output, session) {
   geographicServer("geographic", shared_data, lang = current_lang)
 
   # About module
-  aboutServer("about", shared_data)
+  aboutServer("about", shared_data, lang = current_lang)
 }
 
 # ==============================================================================
