@@ -133,16 +133,39 @@ homeUI <- function(id) {
     # Footer
     div(
       class = "home-footer text-center text-muted",
-      tags$p(
-        class = "mb-1",
-        style = "font-size: 0.8rem; font-style: italic;",
-        textOutput(ns("footer_citation"), inline = TRUE)
-      ),
+      # Package reference
       tags$p(
         class = "mb-1",
         style = "font-size: 0.8rem;",
-        textOutput(ns("footer_institutions"), inline = TRUE)
+        tags$strong(textOutput(ns("footer_package_label"), inline = TRUE)),
+        tags$br(),
+        tags$a(
+          href = "https://github.com/antrologos/PNADCperiods",
+          target = "_blank",
+          style = "font-style: italic;",
+          "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data. R package version v0.1.0."
+        )
       ),
+      # Original methodology reference
+      tags$p(
+        class = "mb-1",
+        style = "font-size: 0.8rem;",
+        tags$strong(textOutput(ns("footer_methodology_label"), inline = TRUE)),
+        tags$br(),
+        tags$a(
+          href = "https://portalantigo.ipea.gov.br/portal/index.php?option=com_content&view=article&id=35453",
+          target = "_blank",
+          style = "font-style: italic;",
+          "HECKSHER, Marcos. \"Valor Impreciso por M\u00eas Exato: Microdados e Indicadores Mensais Baseados na Pnad Cont\u00ednua\". IPEA - Nota T\u00e9cnica Disoc, n. 62. Bras\u00edlia, DF: IPEA, Abril/2020."
+        )
+      ),
+      # Copyright
+      tags$p(
+        class = "mb-1",
+        style = "font-size: 0.75rem;",
+        "\u00a9 Barbosa & Hecksher (2026)"
+      ),
+      # Disclaimer
       tags$p(
         class = "mb-0",
         style = "font-size: 0.75rem;",
@@ -182,8 +205,8 @@ homeServer <- function(id, shared_data, lang = reactive("pt")) {
     output$btn_methodology <- renderText({ i18n("home.btn_methodology", get_lang()) })
 
     # Footer
-    output$footer_citation <- renderText({ i18n("home.footer_citation", get_lang()) })
-    output$footer_institutions <- renderText({ i18n("home.footer_institutions", get_lang()) })
+    output$footer_package_label <- renderText({ i18n("home.footer_package_label", get_lang()) })
+    output$footer_methodology_label <- renderText({ i18n("home.footer_methodology_label", get_lang()) })
     output$footer_disclaimer <- renderText({ i18n("home.footer_disclaimer", get_lang()) })
   })
 }

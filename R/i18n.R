@@ -546,13 +546,13 @@ translations <- list(
       en = "Documentation",
       pt = "Documentacao"
     ),
-    footer_citation = list(
-      en = "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data. Methodology: Hecksher (2020, IPEA Nota Tecnica Disoc n. 62/87; Carta de Conjuntura v. 47).",
-      pt = "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data. Metodologia: Hecksher (2020, IPEA Nota Tecnica Disoc n. 62/87; Carta de Conjuntura v. 47)."
+    footer_package_label = list(
+      en = "[Package]",
+      pt = "[Pacote]"
     ),
-    footer_institutions = list(
-      en = "R. Barbosa (Ceres-IESP/UERJ) and M. Hecksher (Ipea), Brazil",
-      pt = "R. Barbosa (Ceres-IESP/UERJ) e M. Hecksher (Ipea), Brasil"
+    footer_methodology_label = list(
+      en = "[Original Methodology]",
+      pt = "[Metodologia Original]"
     ),
     footer_disclaimer = list(
       en = "Monthly estimates are not official IBGE statistics. For official data, visit sidra.ibge.gov.br.",
