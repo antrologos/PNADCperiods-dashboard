@@ -587,7 +587,8 @@ translations <- list(
     age_18_29 = list(en = "18-29 years", pt = "18-29 anos"),
     age_30_59 = list(en = "30-59 years", pt = "30-59 anos"),
     age_60plus = list(en = "60+ years", pt = "60+ anos"),
-    nacional = list(en = "National", pt = "Nacional")
+    nacional = list(en = "National", pt = "Nacional"),
+    select_groups = list(en = "Select groups", pt = "Selecionar grupos")
   ),
 
   # ============================================================================
@@ -599,24 +600,40 @@ translations <- list(
       pt = "Painel PNADCperiods"
     ),
     hero_subtitle = list(
-      en = "Monthly labor market estimates from Brazil's quarterly PNADC survey",
-      pt = "Estimativas mensais do mercado de trabalho a partir da PNADC trimestral"
+      en = "Sub-quarterly period identification and monthly estimates from Brazil's PNADC survey",
+      pt = "Identificacao de periodos sub-trimestrais e estimativas mensais a partir da PNADC"
     ),
     what_is = list(
       en = "What is Mensalization?",
       pt = "O que e Mensalizacao?"
     ),
     what_is_text = list(
-      en = "The IBGE publishes labor market statistics as rolling quarter averages (e.g., the Jan-Feb-Mar average reported for March). Mensalization recovers the underlying monthly estimates, revealing short-term dynamics hidden by quarterly smoothing. The PNADCperiods R package (Barbosa & Hecksher, 2026) implements the mensalization methodology developed by Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 and n. 87; Carta de Conjuntura v. 47).",
-      pt = "O IBGE publica estatisticas do mercado de trabalho como medias trimestrais moveis (ex: a media Jan-Fev-Mar reportada para Marco). A mensalizacao recupera as estimativas mensais subjacentes, revelando dinamicas de curto prazo ocultas pela suavizacao trimestral. O pacote R PNADCperiods (Barbosa & Hecksher, 2026) implementa a metodologia de mensalizacao desenvolvida por Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 e n. 87; Carta de Conjuntura v. 47)."
+      en = "The PNADCperiods R package (Barbosa & Hecksher, 2026) identifies sub-quarterly time periods in PNADC microdata --- determining the exact month, and experimentally the fortnight and week, of each interview. This enables two main functionalities: (1) direct analysis of microdata at monthly frequency with calibrated weights, and (2) mensalization of SIDRA rolling quarter series (e.g., recovering the monthly unemployment rate from the Jan-Feb-Mar average reported for March). Both approaches reveal short-term dynamics hidden by quarterly smoothing. The methodology was developed by Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 and n. 87; Carta de Conjuntura v. 47).",
+      pt = "O pacote R PNADCperiods (Barbosa & Hecksher, 2026) identifica periodos sub-trimestrais nos microdados da PNADC --- determinando o mes exato, e experimentalmente a quinzena e a semana, de cada entrevista. Isso possibilita duas funcionalidades principais: (1) analise direta dos microdados em frequencia mensal com pesos calibrados, e (2) mensalizacao das series de trimestres moveis do SIDRA (ex: recuperar a taxa de desemprego mensal a partir da media Jan-Fev-Mar reportada para Marco). Ambas as abordagens revelam dinamicas de curto prazo ocultas pela suavizacao trimestral. A metodologia foi desenvolvida por Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 e n. 87; Carta de Conjuntura v. 47)."
     ),
     feature_series_title = list(
-      en = "Series Explorer",
-      pt = "Explorador de Series"
+      en = "SIDRA Series Mensalization",
+      pt = "Mensalizacao de Series SIDRA"
     ),
     feature_series_desc = list(
-      en = "Explore 86+ mensalized time series from the SIDRA API, with seasonal adjustment and interactive visualization.",
-      pt = "Explore mais de 86 series temporais mensalizadas da API SIDRA, com ajuste sazonal e visualizacao interativa."
+      en = "Explore 86+ mensalized time series recovered from SIDRA rolling quarter aggregates, with seasonal adjustment and interactive visualization.",
+      pt = "Explore mais de 86 series temporais mensalizadas recuperadas dos agregados trimestrais moveis do SIDRA, com ajuste sazonal e visualizacao interativa."
+    ),
+    feature_inequality_title = list(
+      en = "Inequality Analysis",
+      pt = "Analise de Desigualdade"
+    ),
+    feature_inequality_desc = list(
+      en = "Monthly Gini, Palma ratio, income shares, and Lorenz curves from mensalized PNADC microdata (2012-2024), with demographic breakdowns.",
+      pt = "Gini mensal, razao de Palma, participacao na renda e curvas de Lorenz a partir de microdados mensalizados da PNADC (2012-2024), com desagregacoes demograficas."
+    ),
+    feature_poverty_title = list(
+      en = "Poverty Analysis",
+      pt = "Analise de Pobreza"
+    ),
+    feature_poverty_desc = list(
+      en = "Monthly poverty rates (FGT family) using World Bank and Brazilian poverty lines, from mensalized PNADC microdata with demographic breakdowns.",
+      pt = "Taxas de pobreza mensais (familia FGT) usando linhas do Banco Mundial e brasileiras, a partir de microdados mensalizados da PNADC com desagregacoes demograficas."
     ),
     feature_geo_title = list(
       en = "Geographic Analysis",

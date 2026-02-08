@@ -645,3 +645,36 @@ urban_rural_label <- function(v1022) {
     default = NA_character_
   )
 }
+
+
+#' Get default group selection for breakdown filter
+#'
+#' Returns a sensible subset of groups to display by default when a
+#' demographic breakdown is selected. For low-cardinality breakdowns
+#' (<=6 groups), all groups are selected. For UF (27 states), the top 5
+#' by population are selected. For race, the 3 main categories.
+#'
+#' @param breakdown Character breakdown type
+#' @param available_groups Character vector of available group values
+#' @return Character vector of default selected groups
+get_default_groups <- function(breakdown, available_groups) {
+  # Race: always default to 3 main groups (Amarela/Indigena have tiny samples)
+  if (breakdown == "race") {
+    main3 <- c("Branca", "Preta", "Parda")
+    matched <- intersect(main3, available_groups)
+    if (length(matched) >= 2) return(matched)
+  }
+
+  # UF: always default to top 5 states by population
+  if (breakdown == "uf") {
+    top5 <- c("SP", "RJ", "MG", "BA", "RS")
+    matched <- intersect(top5, available_groups)
+    if (length(matched) >= 3) return(matched)
+  }
+
+  # Low-cardinality breakdowns: select all
+  if (length(available_groups) <= 6) return(available_groups)
+
+  # Fallback for high-cardinality: first 5
+  head(available_groups, 5)
+}

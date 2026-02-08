@@ -64,7 +64,52 @@ homeUI <- function(id) {
         )
       ),
 
-      # Feature 2: Geographic Analysis
+      # Feature 2: Inequality Analysis
+      div(
+        class = "col-md-4",
+        div(
+          class = "card h-100 home-feature-card",
+          div(
+            class = "card-body text-center",
+            div(
+              class = "home-feature-icon",
+              bs_icon("bar-chart-line")
+            ),
+            tags$h5(class = "card-title mt-3",
+                    textOutput(ns("feature_inequality_title"), inline = TRUE)),
+            tags$p(class = "card-text text-muted",
+                   style = "font-size: 0.85rem;",
+                   textOutput(ns("feature_inequality_desc"), inline = TRUE))
+          )
+        )
+      ),
+
+      # Feature 3: Poverty Analysis
+      div(
+        class = "col-md-4",
+        div(
+          class = "card h-100 home-feature-card",
+          div(
+            class = "card-body text-center",
+            div(
+              class = "home-feature-icon",
+              bs_icon("currency-dollar")
+            ),
+            tags$h5(class = "card-title mt-3",
+                    textOutput(ns("feature_poverty_title"), inline = TRUE)),
+            tags$p(class = "card-text text-muted",
+                   style = "font-size: 0.85rem;",
+                   textOutput(ns("feature_poverty_desc"), inline = TRUE))
+          )
+        )
+      )
+    ),
+
+    # Second row of features
+    div(
+      class = "row g-4 mb-4 justify-content-center",
+
+      # Feature 4: Geographic Analysis
       div(
         class = "col-md-4",
         div(
@@ -84,7 +129,7 @@ homeUI <- function(id) {
         )
       ),
 
-      # Feature 3: Open Source Package
+      # Feature 5: Open Source Package
       div(
         class = "col-md-4",
         div(
@@ -195,6 +240,10 @@ homeServer <- function(id, shared_data, lang = reactive("pt")) {
     # Feature cards
     output$feature_series_title <- renderText({ i18n("home.feature_series_title", get_lang()) })
     output$feature_series_desc <- renderText({ i18n("home.feature_series_desc", get_lang()) })
+    output$feature_inequality_title <- renderText({ i18n("home.feature_inequality_title", get_lang()) })
+    output$feature_inequality_desc <- renderText({ i18n("home.feature_inequality_desc", get_lang()) })
+    output$feature_poverty_title <- renderText({ i18n("home.feature_poverty_title", get_lang()) })
+    output$feature_poverty_desc <- renderText({ i18n("home.feature_poverty_desc", get_lang()) })
     output$feature_geo_title <- renderText({ i18n("home.feature_geo_title", get_lang()) })
     output$feature_geo_desc <- renderText({ i18n("home.feature_geo_desc", get_lang()) })
     output$feature_package_title <- renderText({ i18n("home.feature_package_title", get_lang()) })

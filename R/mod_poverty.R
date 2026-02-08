@@ -26,6 +26,9 @@ povertyUI <- function(id) {
       # Breakdown selector
       uiOutput(ns("breakdown_selector")),
 
+      # Group filter (conditional, for non-overall breakdowns)
+      uiOutput(ns("group_filter_ui")),
+
       # Date range slider
       uiOutput(ns("date_range_ui")),
 
@@ -163,6 +166,28 @@ povertyServer <- function(id, shared_data, lang) {
     })
 
     # ====================================================================
+    # Group filter (conditional multi-select for non-overall breakdowns)
+    # ====================================================================
+
+    output$group_filter_ui <- renderUI({
+      breakdown <- input$breakdown
+      if (is.null(breakdown) || breakdown == "overall") return(NULL)
+
+      dt <- pov_data()
+      if (is.null(dt)) return(NULL)
+
+      groups <- sort(unique(dt[breakdown_type == breakdown, breakdown_value]))
+      if (length(groups) == 0) return(NULL)
+
+      defaults <- get_default_groups(breakdown, groups)
+
+      selectInput(ns("group_filter"),
+                  i18n("demographics.select_groups", lang()),
+                  choices = groups, selected = defaults,
+                  multiple = TRUE, selectize = TRUE)
+    })
+
+    # ====================================================================
     # Date range
     # ====================================================================
 
@@ -228,6 +253,12 @@ povertyServer <- function(id, shared_data, lang) {
 
       # Filter by poverty line and breakdown
       sub <- dt[poverty_line_id == pline & breakdown_type == breakdown]
+
+      # Filter by selected groups
+      if (breakdown != "overall" &&
+          !is.null(input$group_filter) && length(input$group_filter) > 0) {
+        sub <- sub[breakdown_value %in% input$group_filter]
+      }
 
       # Filter by date range
       if (!is.null(input$date_slider)) {
@@ -343,10 +374,18 @@ povertyServer <- function(id, shared_data, lang) {
         }
       }
 
+      # Adaptive legend: vertical for many groups, horizontal for few
+      n_groups <- length(unique(sub$breakdown_value))
+      legend_config <- if (n_groups > 6) {
+        list(orientation = "v", x = 1.02, y = 1, font = list(size = 10))
+      } else {
+        list(orientation = "h", y = -0.15)
+      }
+
       p <- p %>% layout(
         xaxis = list(title = ""),
         yaxis = list(title = "", tickformat = ".1%"),
-        legend = list(orientation = "h", y = -0.15),
+        legend = legend_config,
         separators = get_plotly_separators(lang_val),
         hovermode = "x unified"
       )
@@ -380,7 +419,7 @@ povertyServer <- function(id, shared_data, lang) {
                   marker = list(size = 2, color = "#1976D2"),
                   name = fgt_labels[1],
                   hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>") %>%
-            layout(yaxis = list(title = fgt_labels[1], tickformat = ".1%")),
+            layout(yaxis = list(title = "", tickformat = ".1%")),
 
           plot_ly(data = sub, x = ~period, y = as.formula(paste0("~", fgt_cols[2])),
                   type = "scatter", mode = "lines+markers",
@@ -388,7 +427,7 @@ povertyServer <- function(id, shared_data, lang) {
                   marker = list(size = 2, color = "#E53935"),
                   name = fgt_labels[2],
                   hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>") %>%
-            layout(yaxis = list(title = fgt_labels[2], tickformat = ".1%")),
+            layout(yaxis = list(title = "", tickformat = ".1%")),
 
           plot_ly(data = sub, x = ~period, y = as.formula(paste0("~", fgt_cols[3])),
                   type = "scatter", mode = "lines+markers",
@@ -396,9 +435,25 @@ povertyServer <- function(id, shared_data, lang) {
                   marker = list(size = 2, color = "#FF7043"),
                   name = fgt_labels[3],
                   hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>") %>%
-            layout(yaxis = list(title = fgt_labels[3], tickformat = ".1%")),
+            layout(yaxis = list(title = "", tickformat = ".1%")),
 
-          nrows = 3, shareX = TRUE, titleY = TRUE
+          nrows = 3, shareX = TRUE, titleY = FALSE
+        ) %>% layout(
+          annotations = list(
+            list(text = fgt_labels[1], x = -0.06, y = 0.88,
+                 xref = "paper", yref = "paper",
+                 showarrow = FALSE, textangle = -90,
+                 font = list(size = 11)),
+            list(text = fgt_labels[2], x = -0.06, y = 0.50,
+                 xref = "paper", yref = "paper",
+                 showarrow = FALSE, textangle = -90,
+                 font = list(size = 11)),
+            list(text = fgt_labels[3], x = -0.06, y = 0.12,
+                 xref = "paper", yref = "paper",
+                 showarrow = FALSE, textangle = -90,
+                 font = list(size = 11))
+          ),
+          margin = list(l = 80)
         )
       } else {
         # With breakdown: just plot fgt0 by group (simplification for multi-group)
@@ -421,9 +476,15 @@ povertyServer <- function(id, shared_data, lang) {
           )
         }
 
+        legend_cfg <- if (length(groups) > 6) {
+          list(orientation = "v", x = 1.02, y = 1, font = list(size = 10))
+        } else {
+          list(orientation = "h", y = -0.15)
+        }
+
         p <- p %>% layout(
           yaxis = list(tickformat = ".1%"),
-          legend = list(orientation = "h", y = -0.15)
+          legend = legend_cfg
         )
       }
 

@@ -26,6 +26,9 @@ inequalityUI <- function(id) {
       # Breakdown selector
       uiOutput(ns("breakdown_selector")),
 
+      # Group filter (conditional, for non-overall breakdowns)
+      uiOutput(ns("group_filter_ui")),
+
       # Date range slider
       uiOutput(ns("date_range_ui")),
 
@@ -204,6 +207,28 @@ inequalityServer <- function(id, shared_data, lang) {
     })
 
     # ====================================================================
+    # Group filter (conditional multi-select for non-overall breakdowns)
+    # ====================================================================
+
+    output$group_filter_ui <- renderUI({
+      breakdown <- input$breakdown
+      if (is.null(breakdown) || breakdown == "overall") return(NULL)
+
+      dt <- ineq_data()
+      if (is.null(dt)) return(NULL)
+
+      groups <- sort(unique(dt[breakdown_type == breakdown, breakdown_value]))
+      if (length(groups) == 0) return(NULL)
+
+      defaults <- get_default_groups(breakdown, groups)
+
+      selectInput(ns("group_filter"),
+                  i18n("demographics.select_groups", lang()),
+                  choices = groups, selected = defaults,
+                  multiple = TRUE, selectize = TRUE)
+    })
+
+    # ====================================================================
     # Date range
     # ====================================================================
 
@@ -289,6 +314,12 @@ inequalityServer <- function(id, shared_data, lang) {
 
       # Filter by breakdown
       sub <- dt[breakdown_type == breakdown]
+
+      # Filter by selected groups
+      if (breakdown != "overall" &&
+          !is.null(input$group_filter) && length(input$group_filter) > 0) {
+        sub <- sub[breakdown_value %in% input$group_filter]
+      }
 
       # Filter by measure (for time series themes)
       if (theme %in% c("income_level", "distribution") && !is.null(sel_measure)) {
@@ -424,6 +455,12 @@ inequalityServer <- function(id, shared_data, lang) {
           latest_ym <- months[length(months)]
           ldt_sub <- ldt[ref_month_yyyymm == latest_ym &
                            breakdown_type == (breakdown %||% "overall")]
+
+          # Apply group filter for Lorenz too
+          if ((breakdown %||% "overall") != "overall" &&
+              !is.null(input$group_filter) && length(input$group_filter) > 0) {
+            ldt_sub <- ldt_sub[breakdown_value %in% input$group_filter]
+          }
 
           if (breakdown %||% "overall" != "overall") {
             # Multiple lines by group
@@ -561,10 +598,18 @@ inequalityServer <- function(id, shared_data, lang) {
         ",.3f"
       }
 
+      # Adaptive legend: vertical for many groups, horizontal for few
+      n_groups <- length(unique(sub$breakdown_value))
+      legend_config <- if (n_groups > 6) {
+        list(orientation = "v", x = 1.02, y = 1, font = list(size = 10))
+      } else {
+        list(orientation = "h", y = -0.15)
+      }
+
       p <- p %>% layout(
         xaxis = list(title = ""),
         yaxis = list(title = "", tickformat = yformat),
-        legend = list(orientation = "h", y = -0.15),
+        legend = legend_config,
         separators = get_plotly_separators(lang_val),
         hovermode = "x unified"
       )
