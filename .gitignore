@@ -60,3 +60,8 @@ scripts/verify_*.R
 # Test output
 tests/
 tests/testthat/_snaps/
+
+# Claude Code
+CLAUDE.md
+ARCHITECTURE_PLAN.md
+.claude/
