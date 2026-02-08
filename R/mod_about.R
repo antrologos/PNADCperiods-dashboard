@@ -76,6 +76,17 @@ aboutUI <- function(id) {
   url = {https://github.com/antrologos/PNADCperiods}
 }"
         ),
+        tags$h6(class = "mt-3 mb-2", style = "font-weight: 600;",
+                textOutput(ns("methodology_refs_header"), inline = TRUE)),
+        tags$ul(
+          style = "font-size: 0.8rem; padding-left: 1.2rem;",
+          tags$li(
+            'HECKSHER, Marcos. "Valor Impreciso por M\u00eas Exato: Microdados e Indicadores Mensais Baseados na Pnad Cont\u00ednua". IPEA - Nota T\u00e9cnica Disoc, n. 62. Bras\u00edlia, DF: IPEA, 2020. ',
+            tags$a(href = "https://portalantigo.ipea.gov.br/portal/index.php?option=com_content&view=article&id=35453", target = "_blank", "[Link]")
+          ),
+          tags$li('HECKSHER, M. "Cinco meses de perdas de empregos e simula\u00e7\u00e3o de um incentivo a contrata\u00e7\u00f5es". IPEA - Nota T\u00e9cnica Disoc, n. 87. Bras\u00edlia, DF: IPEA, 2020.'),
+          tags$li('HECKSHER, Marcos. "Mercado de trabalho: A queda da segunda quinzena de mar\u00e7o, aprofundada em abril". IPEA - Carta de Conjuntura, v. 47, p. 1-6, 2020.')
+        ),
         tags$p(
           class = "text-muted mb-0",
           style = "font-size: 0.85rem;",
@@ -196,6 +207,7 @@ aboutServer <- function(id, shared_data, lang = reactive("pt")) {
     output$documentation_link <- renderText({ i18n("about.documentation", get_lang()) })
     output$ibge_sidra_link <- renderText({ i18n("about.ibge_sidra", get_lang()) })
     output$disclaimer_header <- renderText({ i18n("about.disclaimer", get_lang()) })
+    output$methodology_refs_header <- renderText({ i18n("about.methodology_refs_header", get_lang()) })
     output$disclaimer_text <- renderText({ i18n("about.disclaimer_text", get_lang()) })
     output$disclaimer_official <- renderText({ i18n("about.disclaimer_official", get_lang()) })
 
