@@ -29,10 +29,13 @@ inequalityUI <- function(id) {
       # Group filter (conditional, for non-overall breakdowns)
       uiOutput(ns("group_filter_ui")),
 
-      # Date range slider
+      # Date range slider (time series themes only)
       uiOutput(ns("date_range_ui")),
 
-      # Period comparison (for Lorenz/GIC themes)
+      # Period picker (lorenz single / decomposition)
+      uiOutput(ns("period_picker_ui")),
+
+      # Period comparison (for Lorenz compare)
       uiOutput(ns("period_comparison_ui")),
 
       # Display options
@@ -188,7 +191,17 @@ inequalityServer <- function(id, shared_data, lang) {
 
     breakdown_choices <- reactive({
       lang_val <- lang()
-      c(
+      theme <- input$theme
+      measure <- input$measure
+
+      # No breakdown for decomposition or lorenz_compare
+      if (!is.null(theme) && theme == "decomposition") return(NULL)
+      if (!is.null(theme) && theme == "lorenz" &&
+          !is.null(measure) && measure == "lorenz_compare") return(NULL)
+      # No breakdown for shares (stacked area doesn't combine well with groups)
+      if (!is.null(theme) && theme == "shares") return(NULL)
+
+      all_choices <- c(
         setNames("overall", i18n("demographics.overall", lang_val)),
         setNames("sex", i18n("demographics.by_sex", lang_val)),
         setNames("race", i18n("demographics.by_race", lang_val)),
@@ -198,11 +211,21 @@ inequalityServer <- function(id, shared_data, lang) {
         setNames("urban_rural", i18n("demographics.by_urban_rural", lang_val)),
         setNames("age_group", i18n("demographics.by_age_group", lang_val))
       )
+
+      # Lorenz single: only overall, race, region available
+      if (!is.null(theme) && theme == "lorenz") {
+        all_choices <- all_choices[all_choices %in% c("overall", "race", "region")]
+      }
+
+      all_choices
     })
 
     output$breakdown_selector <- renderUI({
+      choices <- breakdown_choices()
+      if (is.null(choices)) return(NULL)
+
       selectInput(ns("breakdown"), i18n("demographics.breakdown", lang()),
-                  choices = breakdown_choices(),
+                  choices = choices,
                   selected = isolate(input$breakdown) %||% "overall")
     })
 
@@ -211,6 +234,9 @@ inequalityServer <- function(id, shared_data, lang) {
     # ====================================================================
 
     output$group_filter_ui <- renderUI({
+      # No group filter when breakdown selector is hidden
+      if (is.null(breakdown_choices())) return(NULL)
+
       breakdown <- input$breakdown
       if (is.null(breakdown) || breakdown == "overall") return(NULL)
 
@@ -239,6 +265,10 @@ inequalityServer <- function(id, shared_data, lang) {
     })
 
     output$date_range_ui <- renderUI({
+      theme <- input$theme
+      # No date slider for lorenz or decomposition (use period picker instead)
+      if (!is.null(theme) && theme %in% c("lorenz", "decomposition")) return(NULL)
+
       dr <- date_range()
       if (is.null(dr)) return(NULL)
 
@@ -247,6 +277,41 @@ inequalityServer <- function(id, shared_data, lang) {
                   value = dr,
                   timeFormat = "%b %Y",
                   step = 30)
+    })
+
+    # ====================================================================
+    # Period picker (for lorenz single / decomposition)
+    # ====================================================================
+
+    output$period_picker_ui <- renderUI({
+      theme <- input$theme
+      measure <- input$measure
+
+      show_picker <- FALSE
+      if (!is.null(theme) && theme == "decomposition") show_picker <- TRUE
+      if (!is.null(theme) && theme == "lorenz" &&
+          !is.null(measure) && measure == "lorenz_single") show_picker <- TRUE
+
+      if (!show_picker) return(NULL)
+
+      # Get available months from the appropriate data source
+      if (theme == "lorenz") {
+        ldt <- lorenz_data_all()
+        if (is.null(ldt) || nrow(ldt) == 0) return(NULL)
+        yms <- sort(unique(ldt$ref_month_yyyymm))
+      } else {
+        ddt <- decomp_data()
+        if (is.null(ddt) || nrow(ddt) == 0) return(NULL)
+        yms <- sort(unique(ddt$ref_month_yyyymm))
+      }
+
+      dates <- as.Date(paste0(yms %/% 100, "-", sprintf("%02d", yms %% 100), "-15"))
+      month_choices <- setNames(as.character(yms), format(dates, "%b %Y"))
+
+      selectInput(ns("period_picker"),
+                  i18n("controls_shared.select_period", lang()),
+                  choices = month_choices,
+                  selected = as.character(yms[length(yms)]))
     })
 
     # ====================================================================
@@ -369,8 +434,9 @@ inequalityServer <- function(id, shared_data, lang) {
         if (is.null(sdt) || nrow(sdt) == 0) return(plot_ly())
 
         sel_group_type <- if (!is.null(measure) && measure == "decile") "decile" else "quintile"
+        # Shares always uses overall (breakdown hidden for this theme)
         sdt_sub <- sdt[group_type == sel_group_type &
-                          breakdown_type == (breakdown %||% "overall")]
+                          breakdown_type == "overall"]
 
         if (!is.null(input$date_slider)) {
           sdt_sub <- sdt_sub[period >= input$date_slider[1] &
@@ -450,19 +516,30 @@ inequalityServer <- function(id, shared_data, lang) {
                                   name = format(as.Date(p2_date), "%b %Y"))
           }
         } else {
-          # Single period (latest or selected)
+          # Single period (user-selected or latest)
           months <- sort(unique(ldt$ref_month_yyyymm))
-          latest_ym <- months[length(months)]
-          ldt_sub <- ldt[ref_month_yyyymm == latest_ym &
-                           breakdown_type == (breakdown %||% "overall")]
+          selected_ym <- if (!is.null(input$period_picker)) {
+            as.numeric(input$period_picker)
+          } else {
+            months[length(months)]
+          }
+
+          # Lorenz only has overall, race, region breakdowns
+          breakdown_eff <- breakdown %||% "overall"
+          if (!breakdown_eff %in% c("overall", "race", "region")) {
+            breakdown_eff <- "overall"
+          }
+
+          ldt_sub <- ldt[ref_month_yyyymm == selected_ym &
+                           breakdown_type == breakdown_eff]
 
           # Apply group filter for Lorenz too
-          if ((breakdown %||% "overall") != "overall" &&
+          if (breakdown_eff != "overall" &&
               !is.null(input$group_filter) && length(input$group_filter) > 0) {
             ldt_sub <- ldt_sub[breakdown_value %in% input$group_filter]
           }
 
-          if (breakdown %||% "overall" != "overall") {
+          if (breakdown_eff != "overall") {
             # Multiple lines by group
             p <- plot_ly() %>%
               add_trace(x = c(0, 1), y = c(0, 1), type = "scatter", mode = "lines",
@@ -489,17 +566,18 @@ inequalityServer <- function(id, shared_data, lang) {
               add_trace(data = ldt_sub, x = ~p, y = ~lorenz,
                         type = "scatter", mode = "lines",
                         line = list(color = "#1976D2", width = 2),
-                        name = format(as.Date(paste0(latest_ym %/% 100, "-",
-                                                      latest_ym %% 100, "-15")),
+                        name = format(as.Date(paste0(selected_ym %/% 100, "-",
+                                                      sprintf("%02d", selected_ym %% 100),
+                                                      "-15")),
                                        "%b %Y"))
           }
         }
 
         p <- p %>% layout(
           xaxis = list(title = i18n("inequality.cumulative_pop", lang_val),
-                       range = c(0, 1)),
+                       range = c(0, 1), constrain = "domain"),
           yaxis = list(title = i18n("inequality.cumulative_income", lang_val),
-                       range = c(0, 1)),
+                       range = c(0, 1), scaleanchor = "x", scaleratio = 1),
           legend = list(orientation = "h", y = -0.15),
           separators = get_plotly_separators(lang_val)
         )
@@ -512,9 +590,13 @@ inequalityServer <- function(id, shared_data, lang) {
         ddt <- decomp_data()
         if (is.null(ddt) || nrow(ddt) == 0) return(plot_ly())
 
-        # Use latest period
-        latest_ym <- max(ddt$ref_month_yyyymm)
-        ddt_sub <- ddt[ref_month_yyyymm == latest_ym]
+        # Use selected period or latest
+        selected_ym <- if (!is.null(input$period_picker)) {
+          as.numeric(input$period_picker)
+        } else {
+          max(ddt$ref_month_yyyymm)
+        }
+        ddt_sub <- ddt[ref_month_yyyymm == selected_ym]
 
         if (nrow(ddt_sub) == 0) return(plot_ly())
 
