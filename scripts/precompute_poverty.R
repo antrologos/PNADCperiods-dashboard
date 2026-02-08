@@ -40,7 +40,7 @@ source(file.path(dashboard_dir, "R", "utils_inequality.R"))
 # Load prepared microdata
 # ==============================================================================
 
-cache_file <- file.path(data_dir, "prepared_microdata.fst")
+cache_file <- file.path(project_dir, "data", "processed", "prepared_microdata.fst")
 if (!file.exists(cache_file)) {
   stop("Prepared microdata not found. Run precompute_microdata_base.R first.")
 }

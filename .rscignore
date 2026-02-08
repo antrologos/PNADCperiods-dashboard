@@ -1,0 +1,7 @@
+# Files to exclude from shinyapps.io deployment
+data/prepared_microdata.fst
+scripts/test_*.R
+scripts/debug_*.R
+scripts/fix_*.R
+scripts/verify_*.R
+scripts/validation_results.csv

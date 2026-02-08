@@ -14,7 +14,7 @@
 #   7. Saves prepared microdata as .fst cache
 #
 # Output:
-#   data/prepared_microdata.fst  (~2-4 GB)
+#   ../data/processed/prepared_microdata.fst  (~150-200 MB)
 #
 # Runtime: ~15-30 minutes (first run); cached afterward.
 #
@@ -50,8 +50,10 @@ devtools::load_all(pkg_dir)
 # Source utility functions
 source(file.path(dashboard_dir, "R", "utils_inequality.R"))
 
-# Cache file
-cache_file <- file.path(data_output_dir, "prepared_microdata.fst")
+# Cache file — stored OUTSIDE dashboard dir (not needed at runtime)
+cache_dir <- file.path(project_dir, "data", "processed")
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+cache_file <- file.path(cache_dir, "prepared_microdata.fst")
 
 # ==============================================================================
 # Check cache
