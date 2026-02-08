@@ -405,6 +405,20 @@ geographicUI <- function(id) {
     div(
       class = "p-3",
 
+      # Methodology info banner
+      div(
+        class = "methodology-banner",
+        tags$span(class = "banner-icon", bs_icon("info-circle")),
+        tags$span(
+          textOutput(ns("banner_text"), inline = TRUE),
+          tags$a(
+            href = "https://antrologos.github.io/PNADCperiods/articles/how-it-works.html",
+            target = "_blank",
+            textOutput(ns("banner_link"), inline = TRUE)
+          )
+        )
+      ),
+
       # Map card
       div(
         class = "card mb-3",
@@ -548,6 +562,10 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     # --------------------------------------------------------------------------
     # i18n Label Outputs
     # --------------------------------------------------------------------------
+
+    # Methodology banner
+    output$banner_text <- renderText({ i18n("banners.geographic_text", get_lang()) })
+    output$banner_link <- renderText({ i18n("banners.geographic_link", get_lang()) })
 
     output$label_last_updated <- renderText({ i18n("messages.last_updated", get_lang()) })
     output$label_theme <- renderText({ toupper(i18n("controls.theme", get_lang())) })

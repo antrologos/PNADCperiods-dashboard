@@ -6,6 +6,7 @@
 source("global.R")
 
 # Source modules
+source("R/mod_home.R")
 source("R/mod_series_explorer.R")
 source("R/mod_geographic.R")
 source("R/mod_about.R")
@@ -91,6 +92,14 @@ ui <- page_navbar(
         }
       "))
     )
+  ),
+
+  # Tab 0: Home / Landing Page
+  nav_panel(
+    title = textOutput("nav_home", inline = TRUE),
+    value = "home",
+    icon = bs_icon("house"),
+    homeUI("home")
   ),
 
   # Tab 1: Series Explorer
@@ -202,6 +211,7 @@ server <- function(input, output, session) {
   # Navigation Labels (i18n)
   # --------------------------------------------------------------------------
 
+  output$nav_home <- renderText({ i18n("nav.home", current_lang()) })
   output$nav_series_explorer <- renderText({ i18n("nav.series_explorer", current_lang()) })
   output$nav_geographic <- renderText({ i18n("nav.geographic", current_lang()) })
   output$nav_inequality <- renderText({ i18n("nav.inequality", current_lang()) })
@@ -213,19 +223,11 @@ server <- function(input, output, session) {
   output$header_poverty <- renderText({ i18n("poverty.title", current_lang()) })
 
   output$placeholder_inequality <- renderText({
-    if (current_lang() == "en") {
-      "Inequality analysis will be implemented in Phase 4. This tab will show Gini, Lorenz curves, and Growth Incidence Curves."
-    } else {
-      "A análise de desigualdade será implementada na Fase 4. Esta aba mostrará coeficiente de Gini, curvas de Lorenz e Curvas de Incidência do Crescimento."
-    }
+    i18n("inequality.coming_soon", current_lang())
   })
 
   output$placeholder_poverty <- renderText({
-    if (current_lang() == "en") {
-      "Poverty analysis will be implemented in Phase 5. This tab will show FGT poverty indices with World Bank poverty lines."
-    } else {
-      "A análise de pobreza será implementada na Fase 5. Esta aba mostrará índices FGT de pobreza com linhas de pobreza do Banco Mundial."
-    }
+    i18n("poverty.coming_soon", current_lang())
   })
 
   # --------------------------------------------------------------------------
@@ -248,6 +250,9 @@ server <- function(input, output, session) {
   # --------------------------------------------------------------------------
   # Module Servers (pass language reactive)
   # --------------------------------------------------------------------------
+
+  # Home / Landing Page module
+  homeServer("home", shared_data, lang = current_lang)
 
   # Series Explorer module
   seriesExplorerServer("explorer", shared_data, lang = current_lang)

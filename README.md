@@ -48,8 +48,7 @@ shiny::runApp()
 
 ## Authors
 
-- **Rogerio Barbosa** (R package development)
-- **Marcos Hecksher** (Mensalization methodology)
+- **Rogerio J. Barbosa** and **Marcos Hecksher**
 
 ## License
 

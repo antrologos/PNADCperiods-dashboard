@@ -2,21 +2,20 @@
 # De-seasonalization Utilities
 # ==============================================================================
 # Wrappers for X-13 ARIMA-SEATS and STL decomposition methods
-# Following Marcos Hecksher's methodology with questionnaire split at 2015-Q4
+# Seasonal adjustment with questionnaire split at 2015-Q4 (see Barbosa & Hecksher, 2026)
 
 # Check package availability
 seasonal_available <- requireNamespace("seasonal", quietly = TRUE)
 forecast_available <- requireNamespace("forecast", quietly = TRUE)
 
 # ==============================================================================
-# X-13 ARIMA with X-11 Method (following Marcos Hecksher)
+# X-13 ARIMA with X-11 Method
 # ==============================================================================
 
 #' Apply X-13 ARIMA seasonal adjustment using X-11 method
 #'
-#' Uses X-11 decomposition method (not SEATS) following Marcos Hecksher's
-#' original Stata implementation which uses sax12 with satype(single) and
-#' extracts d11 (the X-11 seasonally adjusted series).
+#' Uses X-11 decomposition method (not SEATS). The x11 parameter forces
+#' X-11 decomposition and extracts d11 (the X-11 seasonally adjusted series).
 #'
 #' @param values Numeric vector of monthly values
 #' @param dates Date vector corresponding to values
@@ -64,9 +63,9 @@ deseasonalize_x13 <- function(values, dates, split_date = as.Date("2015-10-01"))
 
     ts_obj <- ts(vals_clean, frequency = 12, start = c(start_year, start_month))
 
-    # Apply X-13 ARIMA with X-11 method (following Marcos Hecksher's approach)
+    # Apply X-13 ARIMA with X-11 method
     # Using x11 = "" forces X-11 decomposition instead of SEATS
-    # This matches Marcos's Stata: sax12 var, satype(single) / sax12im var, ext(d11)
+    # Replicates the original X-11 implementation: sax12 var, satype(single) / sax12im var, ext(d11)
     tryCatch({
       m <- seasonal::seas(ts_obj, x11 = "")
       adjusted <- as.numeric(seasonal::final(m))

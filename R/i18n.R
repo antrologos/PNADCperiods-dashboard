@@ -23,6 +23,7 @@ translations <- list(
     geographic = list(en = "Geographic", pt = "Geográfico"),
     inequality = list(en = "Inequality", pt = "Desigualdade"),
     poverty = list(en = "Poverty", pt = "Pobreza"),
+    home = list(en = "Home", pt = "Inicio"),
     about = list(en = "About", pt = "Sobre"),
     app_title = list(en = "PNADCperiods Dashboard", pt = "Painel PNADCperiods")
   ),
@@ -357,8 +358,8 @@ translations <- list(
     ),
     what_is = list(en = "What is Mensalization?", pt = "O que e Mensalizacao?"),
     what_is_text = list(
-      en = "Mensalization is a statistical technique that converts Brazil's quarterly PNADC survey data into monthly estimates. The official IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar average reported for March), which smooth out short-term dynamics. This dashboard presents the monthly estimates recovered using the methodology developed by Marcos Hecksher.",
-      pt = "Mensalizacao e uma tecnica estatistica que converte os dados trimestrais da PNADC em estimativas mensais. As divulgacoes oficiais do IBGE reportam estimativas de 'trimestre movel' (ex: media Jan-Fev-Mar reportada para Marco), que suavizam dinamicas de curto prazo. Este painel apresenta as estimativas mensais recuperadas usando a metodologia desenvolvida por Marcos Hecksher."
+      en = "Mensalization is a statistical technique that converts Brazil's quarterly PNADC survey data into monthly estimates. The official IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar average reported for March), which smooth out short-term dynamics. This dashboard presents the monthly estimates recovered using the PNADCperiods methodology (Barbosa & Hecksher, 2026).",
+      pt = "Mensalizacao e uma tecnica estatistica que converte os dados trimestrais da PNADC em estimativas mensais. As divulgacoes oficiais do IBGE reportam estimativas de 'trimestre movel' (ex: media Jan-Fev-Mar reportada para Marco), que suavizam dinamicas de curto prazo. Este painel apresenta as estimativas mensais recuperadas usando a metodologia PNADCperiods (Barbosa & Hecksher, 2026)."
     ),
     methodology = list(en = "Methodology", pt = "Metodologia"),
     methodology_text = list(
@@ -394,8 +395,8 @@ translations <- list(
     ),
     how_to_cite = list(en = "How to Cite", pt = "Como Citar"),
     cite_note = list(
-      en = "Please cite both the package and the original methodology paper.",
-      pt = "Por favor, cite tanto o pacote quanto o artigo original da metodologia."
+      en = "Please cite the package and the methodology paper (Barbosa & Hecksher, 2026).",
+      pt = "Por favor, cite o pacote e o artigo metodologico (Barbosa & Hecksher, 2026)."
     ),
     links = list(en = "Links", pt = "Links"),
     github = list(en = "GitHub Repository", pt = "Repositorio GitHub"),
@@ -449,6 +450,10 @@ translations <- list(
   # ============================================================================
   inequality = list(
     title = list(en = "Inequality Analysis", pt = "Análise de Desigualdade"),
+    coming_soon = list(
+      en = "Coming soon. This tab will feature Gini coefficients, Lorenz curves, and Growth Incidence Curves based on mensalized PNADC microdata.",
+      pt = "Em breve. Esta aba apresentara coeficientes de Gini, curvas de Lorenz e Curvas de Incidencia do Crescimento baseadas em microdados mensalizados da PNADC."
+    ),
     average_income = list(en = "Average Income", pt = "Renda Média"),
     gini = list(en = "Gini Coefficient", pt = "Coeficiente de Gini"),
     lorenz = list(en = "Lorenz Curve", pt = "Curva de Lorenz"),
@@ -468,6 +473,10 @@ translations <- list(
   # ============================================================================
   poverty = list(
     title = list(en = "Poverty Analysis", pt = "Análise de Pobreza"),
+    coming_soon = list(
+      en = "Coming soon. This tab will feature FGT poverty indices with World Bank poverty lines based on mensalized PNADC microdata.",
+      pt = "Em breve. Esta aba apresentara indices FGT de pobreza com linhas de pobreza do Banco Mundial baseadas em microdados mensalizados da PNADC."
+    ),
     poverty_line = list(en = "Poverty Line", pt = "Linha de Pobreza"),
     custom_line = list(en = "Custom Line (R$/month)", pt = "Linha Personalizada (R$/mês)"),
     headcount = list(en = "Headcount Ratio (FGT-0)", pt = "Proporção de Pobres (FGT-0)"),
@@ -479,6 +488,94 @@ translations <- list(
     high_income = list(en = "High Income (USD 8.30/day)", pt = "Renda Alta (USD 8,30/dia)"),
     brazil_official = list(en = "Brazil Official (1/4 MW)", pt = "Brasil Oficial (1/4 SM)"),
     smoothing = list(en = "3-month rolling average", pt = "Média móvel de 3 meses")
+  ),
+
+  # ============================================================================
+  # Home / Landing Page
+  # ============================================================================
+  home = list(
+    hero_title = list(
+      en = "PNADCperiods Dashboard",
+      pt = "Painel PNADCperiods"
+    ),
+    hero_subtitle = list(
+      en = "Monthly labor market estimates from Brazil's quarterly PNADC survey",
+      pt = "Estimativas mensais do mercado de trabalho a partir da PNADC trimestral"
+    ),
+    what_is = list(
+      en = "What is Mensalization?",
+      pt = "O que e Mensalizacao?"
+    ),
+    what_is_text = list(
+      en = "The IBGE publishes labor market statistics as rolling quarter averages (e.g., the Jan-Feb-Mar average reported for March). Mensalization recovers the underlying monthly estimates, revealing short-term dynamics hidden by quarterly smoothing. The PNADCperiods R package implements this methodology, developed by Barbosa & Hecksher (2026).",
+      pt = "O IBGE publica estatisticas do mercado de trabalho como medias trimestrais moveis (ex: a media Jan-Fev-Mar reportada para Marco). A mensalizacao recupera as estimativas mensais subjacentes, revelando dinamicas de curto prazo ocultas pela suavizacao trimestral. O pacote R PNADCperiods implementa esta metodologia, desenvolvida por Barbosa & Hecksher (2026)."
+    ),
+    feature_series_title = list(
+      en = "Series Explorer",
+      pt = "Explorador de Series"
+    ),
+    feature_series_desc = list(
+      en = "Explore 86+ mensalized time series from the SIDRA API, with seasonal adjustment and interactive visualization.",
+      pt = "Explore mais de 86 series temporais mensalizadas da API SIDRA, com ajuste sazonal e visualizacao interativa."
+    ),
+    feature_geo_title = list(
+      en = "Geographic Analysis",
+      pt = "Analise Geografica"
+    ),
+    feature_geo_desc = list(
+      en = "State-level labor market indicators with interactive choropleth maps and bar charts.",
+      pt = "Indicadores do mercado de trabalho por estado com mapas coropleticos interativos e graficos de barras."
+    ),
+    feature_package_title = list(
+      en = "Open Source Package",
+      pt = "Pacote Open Source"
+    ),
+    feature_package_desc = list(
+      en = "Built on the PNADCperiods R package. Full methodology and documentation available on GitHub.",
+      pt = "Construido sobre o pacote R PNADCperiods. Metodologia completa e documentacao disponivel no GitHub."
+    ),
+    btn_methodology = list(
+      en = "Methodology",
+      pt = "Metodologia"
+    ),
+    btn_documentation = list(
+      en = "Documentation",
+      pt = "Documentacao"
+    ),
+    footer_citation = list(
+      en = "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data.",
+      pt = "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data."
+    ),
+    footer_institutions = list(
+      en = "Ceres-IESP/UERJ and Ipea, Brazil",
+      pt = "Ceres-IESP/UERJ e Ipea, Brasil"
+    ),
+    footer_disclaimer = list(
+      en = "Monthly estimates are not official IBGE statistics. For official data, visit sidra.ibge.gov.br.",
+      pt = "As estimativas mensais nao sao estatisticas oficiais do IBGE. Para dados oficiais, visite sidra.ibge.gov.br."
+    )
+  ),
+
+  # ============================================================================
+  # Methodology Info Banners
+  # ============================================================================
+  banners = list(
+    series_text = list(
+      en = "Estimates based on the SIDRA series mensalization module of PNADCperiods. Monthly values are recovered from rolling quarter aggregates published by IBGE.",
+      pt = "Estimativas baseadas no modulo de mensalizacao de series SIDRA do PNADCperiods. Os valores mensais sao recuperados dos agregados trimestrais moveis publicados pelo IBGE."
+    ),
+    series_link = list(
+      en = "Learn more",
+      pt = "Saiba mais"
+    ),
+    geographic_text = list(
+      en = "State-level estimates based on mensalized PNADC microdata with calibrated survey weights.",
+      pt = "Estimativas por estado baseadas em microdados mensalizados da PNADC com pesos amostrais calibrados."
+    ),
+    geographic_link = list(
+      en = "Learn more",
+      pt = "Saiba mais"
+    )
   )
 )
 

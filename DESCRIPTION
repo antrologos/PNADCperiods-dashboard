@@ -3,7 +3,7 @@ Title: PNADCperiods Dashboard
 Version: 0.1.0
 Authors@R: c(
     person("Rogerio", "Barbosa", email = "antrologos@gmail.com", role = c("aut", "cre")),
-    person("Marcos", "Hecksher", role = "aut", comment = "Methodology")
+    person("Marcos", "Hecksher", role = "aut")
   )
 Description: Interactive Shiny dashboard for exploring mensalized PNADC labor
     market series, geographic visualizations, inequality analysis, and poverty

@@ -71,7 +71,7 @@ aboutUI <- function(id) {
 "@software{PNADCperiods,
   author = {Barbosa, Rogerio and Hecksher, Marcos},
   title = {PNADCperiods: Monthly Labor Market Estimates from Brazilian PNADC},
-  year = {2024},
+  year = {2026},
   url = {https://github.com/antrologos/PNADCperiods}
 }"
         ),

@@ -799,3 +799,146 @@ hr {
   background-color: rgba(255, 255, 255, 0.1);
   color: white;
 }
+
+/* ============================================================================
+   Home / Landing Page
+   ============================================================================ */
+
+.home-page {
+  padding: 2rem 1.5rem !important;
+}
+
+.home-hero {
+  padding: 2.5rem 1rem 1.5rem;
+}
+
+.home-title {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  font-size: 2rem;
+  color: var(--ibge-blue);
+  margin-bottom: 0.5rem;
+}
+
+.home-subtitle {
+  font-size: 1.05rem;
+  color: var(--gray-600);
+  max-width: 650px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.home-what-is .card-header {
+  background: var(--ibge-blue-light);
+  border-bottom: 2px solid var(--ibge-blue);
+}
+
+.home-feature-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: default;
+}
+
+.home-feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.home-feature-icon {
+  font-size: 2rem;
+  color: var(--ibge-blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--ibge-blue-light);
+}
+
+.home-feature-card .card-title {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.home-footer {
+  border-top: 1px solid var(--gray-200);
+  padding: 1.5rem 1rem;
+  margin-top: 0.5rem;
+}
+
+/* Home page cards should not fill */
+.home-page .card {
+  flex: 0 0 auto !important;
+  height: auto !important;
+}
+
+/* ============================================================================
+   Methodology Info Banners
+   ============================================================================ */
+
+.methodology-banner {
+  background: linear-gradient(135deg, var(--ibge-blue-light) 0%, rgba(25, 118, 210, 0.05) 100%);
+  border: 1px solid rgba(25, 118, 210, 0.15);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  color: var(--gray-700);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.methodology-banner .banner-icon {
+  color: var(--ibge-blue);
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.methodology-banner a {
+  color: var(--ibge-blue);
+  font-weight: 500;
+  text-decoration: none;
+  margin-left: 0.25rem;
+}
+
+.methodology-banner a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================================
+   Dark Mode - Home Page & Banners
+   ============================================================================ */
+
+[data-bs-theme="dark"] .home-title {
+  color: #64B5F6;
+}
+
+[data-bs-theme="dark"] .home-subtitle {
+  color: var(--gray-600);
+}
+
+[data-bs-theme="dark"] .home-what-is .card-header {
+  background: rgba(25, 118, 210, 0.15);
+}
+
+[data-bs-theme="dark"] .home-feature-icon {
+  background: rgba(25, 118, 210, 0.15);
+  color: #64B5F6;
+}
+
+[data-bs-theme="dark"] .home-footer {
+  border-color: var(--gray-300);
+}
+
+[data-bs-theme="dark"] .methodology-banner {
+  background: linear-gradient(135deg, rgba(25, 118, 210, 0.12) 0%, rgba(25, 118, 210, 0.04) 100%);
+  border-color: rgba(25, 118, 210, 0.2);
+  color: var(--gray-700);
+}
+
+[data-bs-theme="dark"] .methodology-banner a,
+[data-bs-theme="dark"] .methodology-banner .banner-icon {
+  color: #64B5F6;
+}

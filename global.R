@@ -39,7 +39,9 @@ if (!requireNamespace("bsicons", quietly = TRUE)) {
       "percent" = "percent",
       "github" = "github",
       "book" = "book",
-      "building" = "building"
+      "building" = "building",
+      "house" = "home",
+      "lightbulb" = "lightbulb"
     )
     icon_name <- if (name %in% names(fa_map)) fa_map[[name]] else name
     icon(icon_name, ...)

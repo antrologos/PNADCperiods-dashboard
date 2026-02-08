@@ -133,6 +133,20 @@ seriesExplorerUI <- function(id) {
     div(
       class = "p-3",
 
+      # Methodology info banner
+      div(
+        class = "methodology-banner",
+        tags$span(class = "banner-icon", bs_icon("info-circle")),
+        tags$span(
+          textOutput(ns("banner_text"), inline = TRUE),
+          tags$a(
+            href = "https://antrologos.github.io/PNADCperiods/articles/sidra-mensalization.html",
+            target = "_blank",
+            textOutput(ns("banner_link"), inline = TRUE)
+          )
+        )
+      ),
+
       # Main plot card
       div(
         class = "card mb-3",
@@ -374,6 +388,10 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     output$label_seasonal_adjustment <- renderText({ toupper(i18n("controls.deseasonalization", get_lang())) })
     output$label_export <- renderText({ toupper(i18n("controls.export", get_lang())) })
 
+    # Methodology banner
+    output$banner_text <- renderText({ i18n("banners.series_text", get_lang()) })
+    output$banner_link <- renderText({ i18n("banners.series_link", get_lang()) })
+
     # i18n Label Outputs (main panel)
     output$label_summary_stats <- renderText({ i18n("stats.title", get_lang()) })
     output$label_data_table <- renderText({ i18n("data_panel.title", get_lang()) })
@@ -426,15 +444,18 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     # --------------------------------------------------------------------------
 
     output$refresh_button_ui <- renderUI({
-      lang_val <- get_lang()
-      actionButton(
-        session$ns("refresh_sidra"),
-        label = NULL,
-        icon = icon("sync", class = "fa-sm"),
-        class = "btn-sm btn-outline-primary",
-        title = i18n("buttons.refresh_tooltip", lang_val),
-        style = "width: 28px; height: 28px; padding: 0; border-radius: 50%;"
-      )
+      # Refresh button hidden: requires PNADCperiods package on CRAN
+      # To re-enable, uncomment the actionButton below
+      NULL
+      # lang_val <- get_lang()
+      # actionButton(
+      #   session$ns("refresh_sidra"),
+      #   label = NULL,
+      #   icon = icon("sync", class = "fa-sm"),
+      #   class = "btn-sm btn-outline-primary",
+      #   title = i18n("buttons.refresh_tooltip", lang_val),
+      #   style = "width: 28px; height: 28px; padding: 0; border-radius: 50%;"
+      # )
     })
 
     # --------------------------------------------------------------------------

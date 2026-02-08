@@ -65,6 +65,7 @@ app_files <- c(
   "global.R",
   "DESCRIPTION",
   "R/i18n.R",
+  "R/mod_home.R",
   "R/mod_about.R",
   "R/mod_geographic.R",
   "R/mod_series_explorer.R",
@@ -75,6 +76,7 @@ app_files <- c(
   "data/state_monthly_data.rds",  # State-level monthly estimates from microdata
   "data/geographic_data.rds",      # Fallback: SIDRA rolling quarters
   "data/brazil_states_sf.rds",
+  "data/deseasonalized_cache.rds",
   "www/custom.css"
 )
 
