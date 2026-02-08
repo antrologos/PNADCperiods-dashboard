@@ -48,7 +48,8 @@ shiny::runApp()
 
 ## Authors
 
-- **Rogerio J. Barbosa** and **Marcos Hecksher**
+- **Rogerio J. Barbosa** (Ceres-IESP/UERJ) -- R package, dashboard, and website
+- **Marcos Hecksher** (Ipea) -- Mensalization methodology
 
 ## License
 

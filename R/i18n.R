@@ -358,8 +358,8 @@ translations <- list(
     ),
     what_is = list(en = "What is Mensalization?", pt = "O que e Mensalizacao?"),
     what_is_text = list(
-      en = "Mensalization is a statistical technique that converts Brazil's quarterly PNADC survey data into monthly estimates. The official IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar average reported for March), which smooth out short-term dynamics. This dashboard presents the monthly estimates recovered using the PNADCperiods methodology (Barbosa & Hecksher, 2026).",
-      pt = "Mensalizacao e uma tecnica estatistica que converte os dados trimestrais da PNADC em estimativas mensais. As divulgacoes oficiais do IBGE reportam estimativas de 'trimestre movel' (ex: media Jan-Fev-Mar reportada para Marco), que suavizam dinamicas de curto prazo. Este painel apresenta as estimativas mensais recuperadas usando a metodologia PNADCperiods (Barbosa & Hecksher, 2026)."
+      en = "Mensalization is a statistical technique that converts Brazil's quarterly PNADC survey data into monthly estimates. The official IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar average reported for March), which smooth out short-term dynamics. This dashboard presents the monthly estimates recovered using the PNADCperiods R package (Barbosa & Hecksher, 2026), which implements the mensalization methodology developed by Marcos Hecksher.",
+      pt = "Mensalizacao e uma tecnica estatistica que converte os dados trimestrais da PNADC em estimativas mensais. As divulgacoes oficiais do IBGE reportam estimativas de 'trimestre movel' (ex: media Jan-Fev-Mar reportada para Marco), que suavizam dinamicas de curto prazo. Este painel apresenta as estimativas mensais recuperadas usando o pacote R PNADCperiods (Barbosa & Hecksher, 2026), que implementa a metodologia de mensalizacao desenvolvida por Marcos Hecksher."
     ),
     methodology = list(en = "Methodology", pt = "Metodologia"),
     methodology_text = list(
@@ -395,8 +395,8 @@ translations <- list(
     ),
     how_to_cite = list(en = "How to Cite", pt = "Como Citar"),
     cite_note = list(
-      en = "Please cite the package and the methodology paper (Barbosa & Hecksher, 2026).",
-      pt = "Por favor, cite o pacote e o artigo metodologico (Barbosa & Hecksher, 2026)."
+      en = "Please cite the R package (Barbosa & Hecksher, 2026) and the methodology paper when available.",
+      pt = "Por favor, cite o pacote R (Barbosa & Hecksher, 2026) e o artigo metodologico quando disponivel."
     ),
     links = list(en = "Links", pt = "Links"),
     github = list(en = "GitHub Repository", pt = "Repositorio GitHub"),
@@ -507,8 +507,8 @@ translations <- list(
       pt = "O que e Mensalizacao?"
     ),
     what_is_text = list(
-      en = "The IBGE publishes labor market statistics as rolling quarter averages (e.g., the Jan-Feb-Mar average reported for March). Mensalization recovers the underlying monthly estimates, revealing short-term dynamics hidden by quarterly smoothing. The PNADCperiods R package implements this methodology, developed by Barbosa & Hecksher (2026).",
-      pt = "O IBGE publica estatisticas do mercado de trabalho como medias trimestrais moveis (ex: a media Jan-Fev-Mar reportada para Marco). A mensalizacao recupera as estimativas mensais subjacentes, revelando dinamicas de curto prazo ocultas pela suavizacao trimestral. O pacote R PNADCperiods implementa esta metodologia, desenvolvida por Barbosa & Hecksher (2026)."
+      en = "The IBGE publishes labor market statistics as rolling quarter averages (e.g., the Jan-Feb-Mar average reported for March). Mensalization recovers the underlying monthly estimates, revealing short-term dynamics hidden by quarterly smoothing. The PNADCperiods R package (Barbosa & Hecksher, 2026) implements the mensalization methodology developed by Marcos Hecksher.",
+      pt = "O IBGE publica estatisticas do mercado de trabalho como medias trimestrais moveis (ex: a media Jan-Fev-Mar reportada para Marco). A mensalizacao recupera as estimativas mensais subjacentes, revelando dinamicas de curto prazo ocultas pela suavizacao trimestral. O pacote R PNADCperiods (Barbosa & Hecksher, 2026) implementa a metodologia de mensalizacao desenvolvida por Marcos Hecksher."
     ),
     feature_series_title = list(
       en = "Series Explorer",
@@ -547,8 +547,8 @@ translations <- list(
       pt = "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data."
     ),
     footer_institutions = list(
-      en = "Ceres-IESP/UERJ and Ipea, Brazil",
-      pt = "Ceres-IESP/UERJ e Ipea, Brasil"
+      en = "R. Barbosa (Ceres-IESP/UERJ) and M. Hecksher (Ipea), Brazil",
+      pt = "R. Barbosa (Ceres-IESP/UERJ) e M. Hecksher (Ipea), Brasil"
     ),
     footer_disclaimer = list(
       en = "Monthly estimates are not official IBGE statistics. For official data, visit sidra.ibge.gov.br.",

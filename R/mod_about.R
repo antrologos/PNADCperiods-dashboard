@@ -69,9 +69,10 @@ aboutUI <- function(id) {
           class = "bg-light p-3",
           style = "white-space: pre-wrap; font-size: 0.8rem; border-radius: 6px;",
 "@software{PNADCperiods,
-  author = {Barbosa, Rogerio and Hecksher, Marcos},
-  title = {PNADCperiods: Monthly Labor Market Estimates from Brazilian PNADC},
+  author = {Barbosa, Rogerio J. and Hecksher, Marcos},
+  title = {PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data},
   year = {2026},
+  note = {R package version 0.1.0. R. Barbosa (Ceres-IESP/UERJ): package, dashboard, and website. M. Hecksher (Ipea): mensalization methodology.},
   url = {https://github.com/antrologos/PNADCperiods}
 }"
         ),
