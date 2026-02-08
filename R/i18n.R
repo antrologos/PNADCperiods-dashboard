@@ -454,22 +454,66 @@ translations <- list(
   # ============================================================================
   inequality = list(
     title = list(en = "Inequality Analysis", pt = "Análise de Desigualdade"),
-    coming_soon = list(
-      en = "Coming soon. This tab will feature Gini coefficients, Lorenz curves, and Growth Incidence Curves based on mensalized PNADC microdata.",
-      pt = "Em breve. Esta aba apresentara coeficientes de Gini, curvas de Lorenz e Curvas de Incidencia do Crescimento baseadas em microdados mensalizados da PNADC."
+    info_banner = list(
+      en = "Monthly inequality estimates from mensalized annual PNADC microdata (2015-2024). All income values deflated to December 2025 BRL.",
+      pt = "Estimativas mensais de desigualdade a partir de microdados mensalizados da PNADC anual (2015-2024). Todos os valores de renda deflacionados para dezembro de 2025."
     ),
-    average_income = list(en = "Average Income", pt = "Renda Média"),
+    # Themes
+    theme = list(en = "Theme", pt = "Tema"),
+    theme_income_level = list(en = "Income Level", pt = "Nível de Renda"),
+    theme_distribution = list(en = "Distribution", pt = "Distribuição"),
+    theme_shares = list(en = "Income Shares", pt = "Parcelas de Renda"),
+    theme_lorenz = list(en = "Lorenz Curve", pt = "Curva de Lorenz"),
+    theme_decomposition = list(en = "Decomposition", pt = "Decomposição"),
+    # Measures
+    measure = list(en = "Measure", pt = "Medida"),
     gini = list(en = "Gini Coefficient", pt = "Coeficiente de Gini"),
-    lorenz = list(en = "Lorenz Curve", pt = "Curva de Lorenz"),
-    gic = list(en = "Growth Incidence Curve", pt = "Curva de Incidência do Crescimento"),
+    palma = list(en = "Palma Ratio", pt = "Razão de Palma"),
+    p90p10 = list(en = "P90/P10 Ratio", pt = "Razão P90/P10"),
+    p90p50 = list(en = "P90/P50 Ratio", pt = "Razão P90/P50"),
+    p50p10 = list(en = "P50/P10 Ratio", pt = "Razão P50/P10"),
+    top1_share = list(en = "Top 1% Share", pt = "Parcela do Top 1%"),
+    top5_share = list(en = "Top 5% Share", pt = "Parcela do Top 5%"),
+    top10_share = list(en = "Top 10% Share", pt = "Parcela do Top 10%"),
+    bottom50_share = list(en = "Bottom 50% Share", pt = "Parcela dos 50% Inferiores"),
     mean_income = list(en = "Mean Income", pt = "Renda Média"),
     median_income = list(en = "Median Income", pt = "Renda Mediana"),
-    real_income = list(en = "Real Income", pt = "Renda Real"),
-    national = list(en = "National", pt = "Nacional"),
-    by_state = list(en = "By State", pt = "Por Estado"),
+    # Shares
+    quintile_shares = list(en = "Quintile Shares", pt = "Parcelas por Quintil"),
+    decile_shares = list(en = "Decile Shares", pt = "Parcelas por Decil"),
+    # Lorenz
+    lorenz = list(en = "Lorenz Curve", pt = "Curva de Lorenz"),
+    equality_line = list(en = "Perfect Equality", pt = "Igualdade Perfeita"),
+    cumulative_pop = list(en = "Cumulative Population Share", pt = "Parcela Acumulada da População"),
+    cumulative_income = list(en = "Cumulative Income Share", pt = "Parcela Acumulada da Renda"),
+    # Decomposition
+    gini_by_source = list(en = "Gini by Income Source", pt = "Gini por Fonte de Renda"),
+    income_shares_by_source = list(en = "Income Shares by Source", pt = "Parcelas por Fonte de Renda"),
+    gic = list(en = "Growth Incidence Curve", pt = "Curva de Incidência do Crescimento"),
+    # Income sources
+    source_labor = list(en = "Labor Income", pt = "Renda do Trabalho"),
+    source_pension = list(en = "Pensions", pt = "Previdência"),
+    source_bpc = list(en = "BPC-LOAS", pt = "BPC-LOAS"),
+    source_bolsa_familia = list(en = "Bolsa Família", pt = "Bolsa Família"),
+    source_other_programs = list(en = "Other Social Programs", pt = "Outros Programas Sociais"),
+    source_unemployment_insurance = list(en = "Unemployment Insurance", pt = "Seguro Desemprego"),
+    source_rental = list(en = "Rental Income", pt = "Aluguéis"),
+    source_other = list(en = "Other Income", pt = "Outras Rendas"),
+    concentration = list(en = "Concentration Coeff.", pt = "Coef. de Concentração"),
+    income_share = list(en = "Income Share", pt = "Parcela da Renda"),
+    contribution = list(en = "Contribution to Gini", pt = "Contribuição ao Gini"),
+    # Period comparison
     compare_periods = list(en = "Compare Periods", pt = "Comparar Períodos"),
-    period_before = list(en = "Before", pt = "Antes"),
-    period_after = list(en = "After", pt = "Depois")
+    period_before = list(en = "Period 1", pt = "Período 1"),
+    period_after = list(en = "Period 2", pt = "Período 2"),
+    select_period = list(en = "Select period...", pt = "Selecione o período..."),
+    # Display
+    smoothing = list(en = "Smoothing", pt = "Suavização"),
+    smoothing_raw = list(en = "Raw monthly", pt = "Mensal bruto"),
+    smoothing_3mo = list(en = "3-month average", pt = "Média 3 meses"),
+    show_table = list(en = "Show data table", pt = "Mostrar tabela"),
+    deflation_ref = list(en = "Dec 2025 BRL", pt = "R$ Dez 2025"),
+    real_income = list(en = "Real Income", pt = "Renda Real")
   ),
 
   # ============================================================================
@@ -477,21 +521,73 @@ translations <- list(
   # ============================================================================
   poverty = list(
     title = list(en = "Poverty Analysis", pt = "Análise de Pobreza"),
-    coming_soon = list(
-      en = "Coming soon. This tab will feature FGT poverty indices with World Bank poverty lines based on mensalized PNADC microdata.",
-      pt = "Em breve. Esta aba apresentara indices FGT de pobreza com linhas de pobreza do Banco Mundial baseadas em microdados mensalizados da PNADC."
+    info_banner = list(
+      en = "Monthly poverty estimates from mensalized annual PNADC microdata (2015-2024). World Bank poverty lines (June 2025 update, 2021 PPP). All values in December 2025 BRL.",
+      pt = "Estimativas mensais de pobreza a partir de microdados mensalizados da PNADC anual (2015-2024). Linhas de pobreza do Banco Mundial (atualização junho 2025, PPP 2021). Todos os valores em R$ de dezembro de 2025."
     ),
+    # Poverty lines
     poverty_line = list(en = "Poverty Line", pt = "Linha de Pobreza"),
-    custom_line = list(en = "Custom Line (R$/month)", pt = "Linha Personalizada (R$/mês)"),
+    line_300 = list(en = "Extreme ($3.00/day PPP)", pt = "Extrema ($3,00/dia PPP)"),
+    line_420 = list(en = "Lower-Middle ($4.20/day PPP)", pt = "Média-Baixa ($4,20/dia PPP)"),
+    line_830 = list(en = "Upper-Middle ($8.30/day PPP)", pt = "Média-Alta ($8,30/dia PPP)"),
+    line_quarter_mw = list(en = "1/4 Minimum Wage", pt = "1/4 Salário Mínimo"),
+    line_half_mw = list(en = "1/2 Minimum Wage", pt = "1/2 Salário Mínimo"),
+    custom_line = list(en = "Custom (R$/month)", pt = "Personalizada (R$/mês)"),
+    # Measures
+    measure = list(en = "Measure", pt = "Medida"),
     headcount = list(en = "Headcount Ratio (FGT-0)", pt = "Proporção de Pobres (FGT-0)"),
     poverty_gap = list(en = "Poverty Gap (FGT-1)", pt = "Hiato de Pobreza (FGT-1)"),
     severity = list(en = "Poverty Severity (FGT-2)", pt = "Severidade da Pobreza (FGT-2)"),
-    extreme_poverty = list(en = "Extreme Poverty (USD 2.15/day)", pt = "Pobreza Extrema (USD 2,15/dia)"),
-    lower_middle = list(en = "Lower-Middle Income (USD 3.65/day)", pt = "Renda Média-Baixa (USD 3,65/dia)"),
-    upper_middle = list(en = "Upper-Middle Income (USD 6.85/day)", pt = "Renda Média-Alta (USD 6,85/dia)"),
-    high_income = list(en = "High Income (USD 8.30/day)", pt = "Renda Alta (USD 8,30/dia)"),
-    brazil_official = list(en = "Brazil Official (1/4 MW)", pt = "Brasil Oficial (1/4 SM)"),
-    smoothing = list(en = "3-month rolling average", pt = "Média móvel de 3 meses")
+    show_all_fgt = list(en = "Show All Three", pt = "Mostrar as Três"),
+    # Stats
+    n_poor = list(en = "Number of Poor", pt = "Número de Pobres"),
+    population = list(en = "Population", pt = "População"),
+    mean_income_poor = list(en = "Mean Income of Poor", pt = "Renda Média dos Pobres"),
+    # Display
+    smoothing = list(en = "Smoothing", pt = "Suavização"),
+    smoothing_raw = list(en = "Raw monthly", pt = "Mensal bruto"),
+    smoothing_3mo = list(en = "3-month average", pt = "Média 3 meses"),
+    show_table = list(en = "Show data table", pt = "Mostrar tabela"),
+    deflation_ref = list(en = "Dec 2025 BRL", pt = "R$ Dez 2025")
+  ),
+
+  # ============================================================================
+  # Demographic Breakdowns (shared by Inequality & Poverty)
+  # ============================================================================
+  demographics = list(
+    breakdown = list(en = "Breakdown", pt = "Desagregação"),
+    overall = list(en = "Overall (National)", pt = "Total (Nacional)"),
+    by_sex = list(en = "By Sex", pt = "Por Sexo"),
+    by_race = list(en = "By Race/Color", pt = "Por Raça/Cor"),
+    by_education = list(en = "By Education", pt = "Por Escolaridade"),
+    by_region = list(en = "By Region", pt = "Por Região"),
+    by_uf = list(en = "By State", pt = "Por UF"),
+    by_urban_rural = list(en = "By Urban/Rural", pt = "Por Situação Censitária"),
+    by_age_group = list(en = "By Age Group", pt = "Por Faixa Etária"),
+    # Values
+    male = list(en = "Men", pt = "Homens"),
+    female = list(en = "Women", pt = "Mulheres"),
+    white = list(en = "White", pt = "Branca"),
+    black = list(en = "Black", pt = "Preta"),
+    brown = list(en = "Brown", pt = "Parda"),
+    asian = list(en = "Asian", pt = "Amarela"),
+    indigenous = list(en = "Indigenous", pt = "Indígena"),
+    no_education = list(en = "No Education", pt = "Sem Instrução"),
+    primary = list(en = "Primary", pt = "Fundamental"),
+    secondary = list(en = "Secondary", pt = "Médio"),
+    tertiary = list(en = "Tertiary", pt = "Superior"),
+    north = list(en = "North", pt = "Norte"),
+    northeast = list(en = "Northeast", pt = "Nordeste"),
+    southeast = list(en = "Southeast", pt = "Sudeste"),
+    south = list(en = "South", pt = "Sul"),
+    center_west = list(en = "Center-West", pt = "Centro-Oeste"),
+    urban = list(en = "Urban", pt = "Urbano"),
+    rural = list(en = "Rural", pt = "Rural"),
+    age_0_17 = list(en = "0-17 years", pt = "0-17 anos"),
+    age_18_29 = list(en = "18-29 years", pt = "18-29 anos"),
+    age_30_59 = list(en = "30-59 years", pt = "30-59 anos"),
+    age_60plus = list(en = "60+ years", pt = "60+ anos"),
+    nacional = list(en = "National", pt = "Nacional")
   ),
 
   # ============================================================================

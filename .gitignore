@@ -12,8 +12,9 @@
 .Rproj.user/
 *.Rproj
 
-# Large data files (regenerate with scripts/precompute_sidra.R)
+# Large data files (regenerate with scripts/precompute_*.R)
 data/*.rds
+data/*.fst
 
 # But keep the data directory structure
 !data/.gitkeep
@@ -60,6 +61,7 @@ scripts/verify_*.R
 # Test output
 tests/
 tests/testthat/_snaps/
+scripts/validation_results.csv
 
 # Claude Code
 CLAUDE.md

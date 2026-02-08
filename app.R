@@ -9,6 +9,8 @@ source("global.R")
 source("R/mod_home.R")
 source("R/mod_series_explorer.R")
 source("R/mod_geographic.R")
+source("R/mod_inequality.R")
+source("R/mod_poverty.R")
 source("R/mod_about.R")
 
 # ==============================================================================
@@ -118,30 +120,20 @@ ui <- page_navbar(
     geographicUI("geographic")
   ),
 
-  # Tab 3: Inequality (placeholder)
+  # Tab 3: Inequality
   nav_panel(
     title = textOutput("nav_inequality", inline = TRUE),
     value = "inequality",
     icon = bs_icon("bar-chart-line"),
-    card(
-      card_header(textOutput("header_inequality", inline = TRUE)),
-      card_body(
-        textOutput("placeholder_inequality")
-      )
-    )
+    inequalityUI("inequality")
   ),
 
-  # Tab 4: Poverty (placeholder)
+  # Tab 4: Poverty
   nav_panel(
     title = textOutput("nav_poverty", inline = TRUE),
     value = "poverty",
     icon = bs_icon("currency-dollar"),
-    card(
-      card_header(textOutput("header_poverty", inline = TRUE)),
-      card_body(
-        textOutput("placeholder_poverty")
-      )
-    )
+    povertyUI("poverty")
   ),
 
   # Tab 5: About
@@ -218,17 +210,6 @@ server <- function(input, output, session) {
   output$nav_poverty <- renderText({ i18n("nav.poverty", current_lang()) })
   output$nav_about <- renderText({ i18n("nav.about", current_lang()) })
 
-  # Placeholder tab headers (remaining placeholders)
-  output$header_inequality <- renderText({ i18n("inequality.title", current_lang()) })
-  output$header_poverty <- renderText({ i18n("poverty.title", current_lang()) })
-
-  output$placeholder_inequality <- renderText({
-    i18n("inequality.coming_soon", current_lang())
-  })
-
-  output$placeholder_poverty <- renderText({
-    i18n("poverty.coming_soon", current_lang())
-  })
 
   # --------------------------------------------------------------------------
   # Shared Data
@@ -244,7 +225,13 @@ server <- function(input, output, session) {
     # Geographic data (Phase 3)
     geographic_data = app_data$geographic_data,
     geo_last_updated = app_data$geo_last_updated,
-    brazil_states_sf = app_data$brazil_states_sf
+    brazil_states_sf = app_data$brazil_states_sf,
+    # Inequality & Poverty data
+    inequality_data = app_data$inequality_data,
+    income_shares_data = app_data$income_shares_data,
+    lorenz_data = app_data$lorenz_data,
+    income_decomposition_data = app_data$income_decomposition_data,
+    poverty_data = app_data$poverty_data
   )
 
   # --------------------------------------------------------------------------
@@ -259,6 +246,12 @@ server <- function(input, output, session) {
 
   # Geographic Analysis module (Phase 3)
   geographicServer("geographic", shared_data, lang = current_lang)
+
+  # Inequality module
+  inequalityServer("inequality", shared_data, lang = current_lang)
+
+  # Poverty module
+  povertyServer("poverty", shared_data, lang = current_lang)
 
   # About module
   aboutServer("about", shared_data, lang = current_lang)

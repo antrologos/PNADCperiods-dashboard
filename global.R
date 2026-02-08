@@ -74,6 +74,9 @@ source("R/i18n.R")
 # Source de-seasonalization utilities
 source("R/utils_deseasonalize.R")
 
+# Source inequality/poverty utilities
+source("R/utils_inequality.R")
+
 # ==============================================================================
 # Default Language Setting
 # ==============================================================================
@@ -98,7 +101,13 @@ load_app_data <- function() {
     last_updated = NULL,
     # Geographic data (Phase 3)
     geographic_data = NULL,
-    geo_last_updated = NULL
+    geo_last_updated = NULL,
+    # Inequality & Poverty data
+    inequality_data = NULL,
+    income_shares_data = NULL,
+    lorenz_data = NULL,
+    income_decomposition_data = NULL,
+    poverty_data = NULL
   )
 
   # Load series metadata
@@ -148,6 +157,33 @@ load_app_data <- function() {
   sf_path <- file.path(data_dir, "brazil_states_sf.rds")
   if (file.exists(sf_path)) {
     app_data$brazil_states_sf <- readRDS(sf_path)
+  }
+
+  # Load inequality data
+  ineq_path <- file.path(data_dir, "inequality_data.rds")
+  if (file.exists(ineq_path)) {
+    app_data$inequality_data <- readRDS(ineq_path)
+  }
+
+  shares_path <- file.path(data_dir, "income_shares_data.rds")
+  if (file.exists(shares_path)) {
+    app_data$income_shares_data <- readRDS(shares_path)
+  }
+
+  lorenz_path <- file.path(data_dir, "lorenz_data.rds")
+  if (file.exists(lorenz_path)) {
+    app_data$lorenz_data <- readRDS(lorenz_path)
+  }
+
+  decomp_path <- file.path(data_dir, "income_decomposition_data.rds")
+  if (file.exists(decomp_path)) {
+    app_data$income_decomposition_data <- readRDS(decomp_path)
+  }
+
+  # Load poverty data
+  poverty_path <- file.path(data_dir, "poverty_data.rds")
+  if (file.exists(poverty_path)) {
+    app_data$poverty_data <- readRDS(poverty_path)
   }
 
   app_data

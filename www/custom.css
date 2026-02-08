@@ -942,3 +942,49 @@ hr {
 [data-bs-theme="dark"] .methodology-banner .banner-icon {
   color: #64B5F6;
 }
+
+/* ============================================================================
+   Inequality & Poverty Tabs
+   ============================================================================ */
+
+/* Sidebar styling (shared between both tabs) */
+.inequality-sidebar,
+.poverty-sidebar {
+  --bslib-sidebar-width: 320px;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+/* Highlighted stat card (latest value) */
+.stat-card-highlight {
+  background: var(--ibge-blue-light);
+  border: 1px solid rgba(25, 118, 210, 0.2);
+}
+
+.stat-card-highlight .fw-bold {
+  color: var(--ibge-blue);
+  font-family: 'Poppins', sans-serif;
+  font-size: 1rem;
+}
+
+/* Inline radio buttons for smoothing toggle */
+.poverty-sidebar .shiny-input-radiogroup.shiny-input-container-inline .radio-inline {
+  font-size: 0.75rem;
+  margin-right: 0.75rem;
+}
+
+/* Lorenz plot: keep aspect ratio square-ish */
+.lorenz-plot-container .js-plotly-plot {
+  aspect-ratio: 1 / 1;
+  max-height: 450px;
+}
+
+/* Dark mode support for new stat card variant */
+[data-bs-theme="dark"] .stat-card-highlight {
+  background: rgba(25, 118, 210, 0.15);
+  border-color: rgba(25, 118, 210, 0.25);
+}
+
+[data-bs-theme="dark"] .stat-card-highlight .fw-bold {
+  color: #64B5F6;
+}
