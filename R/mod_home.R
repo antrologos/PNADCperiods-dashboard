@@ -49,6 +49,7 @@ homeUI <- function(id) {
         class = "col-md-4",
         div(
           class = "card h-100 home-feature-card",
+          onclick = "goToTab('explorer')",
           div(
             class = "card-body text-center",
             div(
@@ -69,6 +70,7 @@ homeUI <- function(id) {
         class = "col-md-4",
         div(
           class = "card h-100 home-feature-card",
+          onclick = "goToTab('inequality')",
           div(
             class = "card-body text-center",
             div(
@@ -89,6 +91,7 @@ homeUI <- function(id) {
         class = "col-md-4",
         div(
           class = "card h-100 home-feature-card",
+          onclick = "goToTab('poverty')",
           div(
             class = "card-body text-center",
             div(
@@ -114,6 +117,7 @@ homeUI <- function(id) {
         class = "col-md-4",
         div(
           class = "card h-100 home-feature-card",
+          onclick = "goToTab('geographic')",
           div(
             class = "card-body text-center",
             div(
@@ -134,6 +138,7 @@ homeUI <- function(id) {
         class = "col-md-4",
         div(
           class = "card h-100 home-feature-card",
+          onclick = "goToTab('about')",
           div(
             class = "card-body text-center",
             div(

@@ -103,19 +103,19 @@ inequalityServer <- function(id, shared_data, lang) {
     # ====================================================================
 
     ineq_data <- reactive({
-      shared_data$inequality_data
+      shared_data$get_inequality_data()
     })
 
     shares_data <- reactive({
-      shared_data$income_shares_data
+      shared_data$get_income_shares_data()
     })
 
     lorenz_data_all <- reactive({
-      shared_data$lorenz_data
+      shared_data$get_lorenz_data()
     })
 
     decomp_data <- reactive({
-      shared_data$income_decomposition_data
+      shared_data$get_income_decomposition_data()
     })
 
     # ====================================================================
@@ -180,7 +180,14 @@ inequalityServer <- function(id, shared_data, lang) {
     })
 
     output$measure_selector <- renderUI({
-      selectInput(ns("measure"), i18n("inequality.measure", lang()),
+      theme <- input$theme
+      # Use "View" label for Lorenz instead of "Measure"
+      label <- if (!is.null(theme) && theme == "lorenz") {
+        i18n("inequality.lorenz_view", lang())
+      } else {
+        i18n("inequality.measure", lang())
+      }
+      selectInput(ns("measure"), label,
                   choices = measure_choices(),
                   selected = isolate(input$measure))
     })
@@ -279,6 +286,11 @@ inequalityServer <- function(id, shared_data, lang) {
                   step = 30)
     })
 
+    # Debounced date slider (prevents 100+ re-renders during drag)
+    date_slider_debounced <- reactive({
+      input$date_slider
+    }) %>% debounce(300)
+
     # ====================================================================
     # Period picker (for lorenz single / decomposition)
     # ====================================================================
@@ -305,8 +317,11 @@ inequalityServer <- function(id, shared_data, lang) {
         yms <- sort(unique(ddt$ref_month_yyyymm))
       }
 
-      dates <- as.Date(paste0(yms %/% 100, "-", sprintf("%02d", yms %% 100), "-15"))
-      month_choices <- setNames(as.character(yms), format(dates, "%b %Y"))
+      lang_val <- lang()
+      month_choices <- setNames(
+        as.character(yms),
+        vapply(yms, function(ym) format_date_i18n(ym, lang_val, "short"), character(1))
+      )
 
       selectInput(ns("period_picker"),
                   i18n("controls_shared.select_period", lang()),
@@ -328,7 +343,11 @@ inequalityServer <- function(id, shared_data, lang) {
       if (is.null(dr)) return(NULL)
 
       months <- sort(unique(ineq_data()$period))
-      month_choices <- setNames(as.character(months), format(months, "%b %Y"))
+      lang_val <- lang()
+      month_choices <- setNames(
+        as.character(months),
+        vapply(months, function(m) format_date_i18n(m, lang_val, "short"), character(1))
+      )
 
       tagList(
         selectInput(ns("period1"), i18n("inequality.period_before", lang()),
@@ -391,9 +410,10 @@ inequalityServer <- function(id, shared_data, lang) {
         sub <- sub[measure == sel_measure]
       }
 
-      # Filter by date range
-      if (!is.null(input$date_slider)) {
-        sub <- sub[period >= input$date_slider[1] & period <= input$date_slider[2]]
+      # Filter by date range (debounced)
+      dr <- date_slider_debounced()
+      if (!is.null(dr)) {
+        sub <- sub[period >= dr[1] & period <= dr[2]]
       }
 
       sub
@@ -438,9 +458,9 @@ inequalityServer <- function(id, shared_data, lang) {
         sdt_sub <- sdt[group_type == sel_group_type &
                           breakdown_type == "overall"]
 
-        if (!is.null(input$date_slider)) {
-          sdt_sub <- sdt_sub[period >= input$date_slider[1] &
-                               period <= input$date_slider[2]]
+        dr <- date_slider_debounced()
+        if (!is.null(dr)) {
+          sdt_sub <- sdt_sub[period >= dr[1] & period <= dr[2]]
         }
 
         if (nrow(sdt_sub) == 0) return(plot_ly())
@@ -507,13 +527,13 @@ inequalityServer <- function(id, shared_data, lang) {
             p <- p %>% add_trace(data = ldt1, x = ~p, y = ~lorenz,
                                   type = "scatter", mode = "lines",
                                   line = list(color = "#1976D2", width = 2),
-                                  name = format(as.Date(p1_date), "%b %Y"))
+                                  name = format_date_i18n(as.Date(p1_date), lang_val, "short"))
           }
           if (nrow(ldt2) > 0) {
             p <- p %>% add_trace(data = ldt2, x = ~p, y = ~lorenz,
                                   type = "scatter", mode = "lines",
                                   line = list(color = "#E53935", width = 2),
-                                  name = format(as.Date(p2_date), "%b %Y"))
+                                  name = format_date_i18n(as.Date(p2_date), lang_val, "short"))
           }
         } else {
           # Single period (user-selected or latest)
@@ -566,10 +586,7 @@ inequalityServer <- function(id, shared_data, lang) {
               add_trace(data = ldt_sub, x = ~p, y = ~lorenz,
                         type = "scatter", mode = "lines",
                         line = list(color = "#1976D2", width = 2),
-                        name = format(as.Date(paste0(selected_ym %/% 100, "-",
-                                                      sprintf("%02d", selected_ym %% 100),
-                                                      "-15")),
-                                       "%b %Y"))
+                        name = format_date_i18n(selected_ym, lang_val, "short"))
           }
         }
 
@@ -640,6 +657,7 @@ inequalityServer <- function(id, shared_data, lang) {
       # ---- TIME SERIES (income_level, distribution) ----
       sub <- filtered_data()
       if (is.null(sub) || nrow(sub) == 0) return(plot_ly())
+      if (is.null(breakdown)) return(plot_ly())
 
       if (breakdown == "overall") {
         # Single line
@@ -724,6 +742,7 @@ inequalityServer <- function(id, shared_data, lang) {
       lang_val <- lang()
       measure <- input$measure
       breakdown <- input$breakdown
+      if (is.null(breakdown)) return(NULL)
 
       # For overall, compute stats
       if (breakdown == "overall") {
@@ -800,8 +819,9 @@ inequalityServer <- function(id, shared_data, lang) {
       sub <- filtered_data()
       if (is.null(sub) || nrow(sub) == 0) return(NULL)
 
+      lang_val <- lang()
       display <- sub[, .(
-        Period = format(period, "%b %Y"),
+        Period = vapply(period, function(p) format_date_i18n(p, lang_val, "short"), character(1)),
         Group = breakdown_value,
         Measure = measure,
         Value = round(value, 4),
@@ -833,10 +853,51 @@ inequalityServer <- function(id, shared_data, lang) {
         paste0("inequality_", Sys.Date(), ".png")
       },
       content = function(file) {
-        grDevices::png(file, width = 1200, height = 600, res = 150)
-        plot.new()
-        title("Export not available - use plotly download button")
-        grDevices::dev.off()
+        theme <- input$theme
+        lang_val <- lang()
+
+        # Time series themes
+        if (theme %in% c("income_level", "distribution")) {
+          sub <- filtered_data()
+          if (is.null(sub) || nrow(sub) == 0) return()
+
+          mc <- measure_choices()
+          title_label <- names(mc)[mc == input$measure]
+          if (length(title_label) == 0) title_label <- ""
+
+          p <- ggplot2::ggplot(sub, ggplot2::aes(x = period, y = value,
+                                                   color = breakdown_value)) +
+            ggplot2::geom_line(linewidth = 0.8) +
+            ggplot2::labs(title = title_label, x = "", y = "", color = "") +
+            ggplot2::theme_minimal(base_size = 12) +
+            ggplot2::theme(legend.position = "bottom")
+          ggplot2::ggsave(file, p, width = 10, height = 6, dpi = 150)
+
+        } else if (theme == "decomposition") {
+          ddt <- decomp_data()
+          if (is.null(ddt) || nrow(ddt) == 0) return()
+          sel_ym <- if (!is.null(input$period_picker)) as.numeric(input$period_picker) else max(ddt$ref_month_yyyymm)
+          ddt_sub <- ddt[ref_month_yyyymm == sel_ym]
+          if (nrow(ddt_sub) == 0) return()
+
+          y_var <- if (!is.null(input$measure) && input$measure == "income_shares_by_source") "income_share" else "contribution_to_gini"
+          ddt_sub[, label := sapply(income_source, function(s) i18n(paste0("inequality.source_", s), lang_val))]
+
+          p <- ggplot2::ggplot(ddt_sub, ggplot2::aes(x = reorder(label, -get(y_var)), y = get(y_var))) +
+            ggplot2::geom_col(fill = "#1976D2") +
+            ggplot2::scale_y_continuous(labels = function(x) paste0(round(x * 100, 1), "%")) +
+            ggplot2::labs(title = format_date_i18n(sel_ym, lang_val, "short"), x = "", y = "") +
+            ggplot2::theme_minimal(base_size = 12) +
+            ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+          ggplot2::ggsave(file, p, width = 10, height = 6, dpi = 150)
+
+        } else {
+          # Fallback for lorenz/shares
+          grDevices::png(file, width = 1200, height = 600, res = 150)
+          plot.new()
+          title(main = "Use the plotly camera icon to export this chart type")
+          grDevices::dev.off()
+        }
       }
     )
 

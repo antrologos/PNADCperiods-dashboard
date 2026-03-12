@@ -20,6 +20,9 @@ povertyUI <- function(id) {
       # Poverty line selector
       uiOutput(ns("poverty_line_selector")),
 
+      # MW help note (conditional)
+      uiOutput(ns("poverty_line_help")),
+
       # Measure selector
       uiOutput(ns("measure_selector")),
 
@@ -97,7 +100,7 @@ povertyServer <- function(id, shared_data, lang) {
     # ====================================================================
 
     pov_data <- reactive({
-      shared_data$poverty_data
+      shared_data$get_poverty_data()
     })
 
     # ====================================================================
@@ -119,6 +122,14 @@ povertyServer <- function(id, shared_data, lang) {
       selectInput(ns("poverty_line"), i18n("poverty.poverty_line", lang()),
                   choices = poverty_line_choices(),
                   selected = isolate(input$poverty_line) %||% "wb_830")
+    })
+
+    # MW help note (shown only for MW-based poverty lines)
+    output$poverty_line_help <- renderUI({
+      pl <- input$poverty_line
+      if (is.null(pl) || !pl %in% c("br_quarter_mw", "br_half_mw")) return(NULL)
+      tags$small(class = "text-muted d-block mt-1 mb-2",
+                 i18n("poverty.mw_note", lang()))
     })
 
     # ====================================================================
@@ -208,6 +219,11 @@ povertyServer <- function(id, shared_data, lang) {
                   step = 30)
     })
 
+    # Debounced date slider (prevents 100+ re-renders during drag)
+    date_slider_debounced <- reactive({
+      input$date_slider
+    }) %>% debounce(300)
+
     # ====================================================================
     # Display options
     # ====================================================================
@@ -260,9 +276,10 @@ povertyServer <- function(id, shared_data, lang) {
         sub <- sub[breakdown_value %in% input$group_filter]
       }
 
-      # Filter by date range
-      if (!is.null(input$date_slider)) {
-        sub <- sub[period >= input$date_slider[1] & period <= input$date_slider[2]]
+      # Filter by date range (debounced)
+      dr <- date_slider_debounced()
+      if (!is.null(dr)) {
+        sub <- sub[period >= dr[1] & period <= dr[2]]
       }
 
       sub
@@ -326,6 +343,7 @@ povertyServer <- function(id, shared_data, lang) {
       lang_val <- lang()
 
       if (is.null(measure)) return(plot_ly())
+      if (is.null(breakdown)) return(plot_ly())
 
       sub <- filtered_data()
       if (is.null(sub) || nrow(sub) == 0) return(plot_ly())
@@ -516,6 +534,7 @@ povertyServer <- function(id, shared_data, lang) {
       measure <- input$measure
       breakdown <- input$breakdown
       lang_val <- lang()
+      if (is.null(breakdown)) return(NULL)
 
       if (is.null(measure) || measure == "all_fgt") measure <- "fgt0"
 
@@ -611,8 +630,9 @@ povertyServer <- function(id, shared_data, lang) {
       sub <- filtered_data()
       if (is.null(sub) || nrow(sub) == 0) return(NULL)
 
+      lang_val <- lang()
       display <- sub[, .(
-        Period = format(period, "%b %Y"),
+        Period = vapply(period, function(p) format_date_i18n(p, lang_val, "short"), character(1)),
         Group = breakdown_value,
         `FGT-0` = round(fgt0, 4),
         `FGT-1` = round(fgt1, 4),
@@ -647,10 +667,31 @@ povertyServer <- function(id, shared_data, lang) {
         paste0("poverty_", input$poverty_line, "_", Sys.Date(), ".png")
       },
       content = function(file) {
-        grDevices::png(file, width = 1200, height = 600, res = 150)
-        plot.new()
-        title("Export not available - use plotly download button")
-        grDevices::dev.off()
+        sub <- filtered_data()
+        if (is.null(sub) || nrow(sub) == 0) return()
+
+        lang_val <- lang()
+        y_col <- y_var_name()
+        measure <- input$measure
+        if (is.null(measure) || measure == "all_fgt") y_col <- "fgt0"
+
+        mc <- measure_choices()
+        title_label <- names(mc)[mc == measure]
+        if (length(title_label) == 0) title_label <- ""
+
+        plc <- poverty_line_choices()
+        line_label <- names(plc)[plc == input$poverty_line]
+        if (length(line_label) == 0) line_label <- ""
+
+        p <- ggplot2::ggplot(sub, ggplot2::aes(x = period, y = get(y_col),
+                                                 color = breakdown_value)) +
+          ggplot2::geom_line(linewidth = 0.8) +
+          ggplot2::scale_y_continuous(labels = function(x) paste0(round(x * 100, 1), "%")) +
+          ggplot2::labs(title = paste0(title_label, " - ", line_label),
+                        x = "", y = "", color = "") +
+          ggplot2::theme_minimal(base_size = 12) +
+          ggplot2::theme(legend.position = "bottom")
+        ggplot2::ggsave(file, p, width = 10, height = 6, dpi = 150)
       }
     )
 

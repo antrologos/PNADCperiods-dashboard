@@ -23,7 +23,7 @@ translations <- list(
     geographic = list(en = "Geographic", pt = "Geográfico"),
     inequality = list(en = "Inequality", pt = "Desigualdade"),
     poverty = list(en = "Poverty", pt = "Pobreza"),
-    home = list(en = "Home", pt = "Inicio"),
+    home = list(en = "Home", pt = "In\u00edcio"),
     about = list(en = "About", pt = "Sobre"),
     app_title = list(en = "PNADCperiods Dashboard", pt = "Painel PNADCperiods")
   ),
@@ -459,7 +459,7 @@ translations <- list(
       pt = "Estimativas mensais de desigualdade a partir de microdados mensalizados da PNADC anual (2015-2024). Todos os valores de renda deflacionados para dezembro de 2025."
     ),
     # Themes
-    theme = list(en = "Theme", pt = "Tema"),
+    theme = list(en = "Analysis", pt = "Análise"),
     theme_income_level = list(en = "Income Level", pt = "Nível de Renda"),
     theme_distribution = list(en = "Distribution", pt = "Distribuição"),
     theme_shares = list(en = "Income Shares", pt = "Parcelas de Renda"),
@@ -482,7 +482,8 @@ translations <- list(
     quintile_shares = list(en = "Quintile Shares", pt = "Parcelas por Quintil"),
     decile_shares = list(en = "Decile Shares", pt = "Parcelas por Decil"),
     # Lorenz
-    lorenz = list(en = "Lorenz Curve", pt = "Curva de Lorenz"),
+    lorenz_view = list(en = "View", pt = "Visualização"),
+    lorenz = list(en = "Compare Groups", pt = "Comparar Grupos"),
     equality_line = list(en = "Perfect Equality", pt = "Igualdade Perfeita"),
     cumulative_pop = list(en = "Cumulative Population Share", pt = "Parcela Acumulada da População"),
     cumulative_income = list(en = "Cumulative Income Share", pt = "Parcela Acumulada da Renda"),
@@ -530,8 +531,12 @@ translations <- list(
     line_300 = list(en = "Extreme ($3.00/day PPP)", pt = "Extrema ($3,00/dia PPP)"),
     line_420 = list(en = "Lower-Middle ($4.20/day PPP)", pt = "Média-Baixa ($4,20/dia PPP)"),
     line_830 = list(en = "Upper-Middle ($8.30/day PPP)", pt = "Média-Alta ($8,30/dia PPP)"),
-    line_quarter_mw = list(en = "1/4 Minimum Wage", pt = "1/4 Salário Mínimo"),
-    line_half_mw = list(en = "1/2 Minimum Wage", pt = "1/2 Salário Mínimo"),
+    line_quarter_mw = list(en = "1/4 Minimum Wage (varies by year)", pt = "1/4 Salário Mínimo (varia por ano)"),
+    line_half_mw = list(en = "1/2 Minimum Wage (varies by year)", pt = "1/2 Salário Mínimo (varia por ano)"),
+    mw_note = list(
+      en = "MW-based lines use the historical minimum wage for each year, deflated to Dec 2025 BRL by INPC. The real value of the MW changed over the period.",
+      pt = "Linhas baseadas no SM usam o salário mínimo histórico de cada ano, deflacionado para R$ de Dez 2025 pelo INPC. O valor real do SM variou ao longo do período."
+    ),
     custom_line = list(en = "Custom (R$/month)", pt = "Personalizada (R$/mês)"),
     # Measures
     measure = list(en = "Measure", pt = "Medida"),
@@ -608,47 +613,47 @@ translations <- list(
     ),
     hero_subtitle = list(
       en = "Sub-quarterly period identification and monthly estimates from Brazil's PNADC survey",
-      pt = "Identificacao de periodos sub-trimestrais e estimativas mensais a partir da PNADC"
+      pt = "Identifica\u00e7\u00e3o de per\u00edodos sub-trimestrais e estimativas mensais a partir da PNADC"
     ),
     what_is = list(
       en = "What is Mensalization?",
-      pt = "O que e Mensalizacao?"
+      pt = "O que \u00e9 Mensaliza\u00e7\u00e3o?"
     ),
     what_is_text = list(
       en = "The PNADCperiods R package (Barbosa & Hecksher, 2026) identifies sub-quarterly time periods in PNADC microdata --- determining the exact month, and experimentally the fortnight and week, of each interview. This enables two main functionalities: (1) direct analysis of microdata at monthly frequency with calibrated weights, and (2) mensalization of SIDRA rolling quarter series (e.g., recovering the monthly unemployment rate from the Jan-Feb-Mar average reported for March). Both approaches reveal short-term dynamics hidden by quarterly smoothing. The methodology was developed by Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 and n. 87; Carta de Conjuntura v. 47).",
-      pt = "O pacote R PNADCperiods (Barbosa & Hecksher, 2026) identifica periodos sub-trimestrais nos microdados da PNADC --- determinando o mes exato, e experimentalmente a quinzena e a semana, de cada entrevista. Isso possibilita duas funcionalidades principais: (1) analise direta dos microdados em frequencia mensal com pesos calibrados, e (2) mensalizacao das series de trimestres moveis do SIDRA (ex: recuperar a taxa de desemprego mensal a partir da media Jan-Fev-Mar reportada para Marco). Ambas as abordagens revelam dinamicas de curto prazo ocultas pela suavizacao trimestral. A metodologia foi desenvolvida por Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 e n. 87; Carta de Conjuntura v. 47)."
+      pt = "O pacote R PNADCperiods (Barbosa & Hecksher, 2026) identifica per\u00edodos sub-trimestrais nos microdados da PNADC --- determinando o m\u00eas exato, e experimentalmente a quinzena e a semana, de cada entrevista. Isso possibilita duas funcionalidades principais: (1) an\u00e1lise direta dos microdados em frequ\u00eancia mensal com pesos calibrados, e (2) mensaliza\u00e7\u00e3o das s\u00e9ries de trimestres m\u00f3veis do SIDRA (ex: recuperar a taxa de desemprego mensal a partir da m\u00e9dia Jan-Fev-Mar reportada para Mar\u00e7o). Ambas as abordagens revelam din\u00e2micas de curto prazo ocultas pela suaviza\u00e7\u00e3o trimestral. A metodologia foi desenvolvida por Marcos Hecksher (Hecksher, 2020 --- IPEA Nota T\u00e9cnica Disoc n. 62 e n. 87; Carta de Conjuntura v. 47)."
     ),
     feature_series_title = list(
       en = "SIDRA Series Mensalization",
-      pt = "Mensalizacao de Series SIDRA"
+      pt = "Mensaliza\u00e7\u00e3o de S\u00e9ries SIDRA"
     ),
     feature_series_desc = list(
       en = "Explore 86+ mensalized time series recovered from SIDRA rolling quarter aggregates, with seasonal adjustment and interactive visualization.",
-      pt = "Explore mais de 86 series temporais mensalizadas recuperadas dos agregados trimestrais moveis do SIDRA, com ajuste sazonal e visualizacao interativa."
+      pt = "Explore mais de 86 s\u00e9ries temporais mensalizadas recuperadas dos agregados trimestrais m\u00f3veis do SIDRA, com ajuste sazonal e visualiza\u00e7\u00e3o interativa."
     ),
     feature_inequality_title = list(
       en = "Inequality Analysis",
-      pt = "Analise de Desigualdade"
+      pt = "An\u00e1lise de Desigualdade"
     ),
     feature_inequality_desc = list(
       en = "Monthly Gini, Palma ratio, income shares, and Lorenz curves from mensalized PNADC microdata (2012-2024), with demographic breakdowns.",
-      pt = "Gini mensal, razao de Palma, participacao na renda e curvas de Lorenz a partir de microdados mensalizados da PNADC (2012-2024), com desagregacoes demograficas."
+      pt = "Gini mensal, raz\u00e3o de Palma, participa\u00e7\u00e3o na renda e curvas de Lorenz a partir de microdados mensalizados da PNADC (2012-2024), com desagrega\u00e7\u00f5es demogr\u00e1ficas."
     ),
     feature_poverty_title = list(
       en = "Poverty Analysis",
-      pt = "Analise de Pobreza"
+      pt = "An\u00e1lise de Pobreza"
     ),
     feature_poverty_desc = list(
       en = "Monthly poverty rates (FGT family) using World Bank and Brazilian poverty lines, from mensalized PNADC microdata with demographic breakdowns.",
-      pt = "Taxas de pobreza mensais (familia FGT) usando linhas do Banco Mundial e brasileiras, a partir de microdados mensalizados da PNADC com desagregacoes demograficas."
+      pt = "Taxas de pobreza mensais (fam\u00edlia FGT) usando linhas do Banco Mundial e brasileiras, a partir de microdados mensalizados da PNADC com desagrega\u00e7\u00f5es demogr\u00e1ficas."
     ),
     feature_geo_title = list(
       en = "Geographic Analysis",
-      pt = "Analise Geografica"
+      pt = "An\u00e1lise Geogr\u00e1fica"
     ),
     feature_geo_desc = list(
       en = "State-level labor market indicators with interactive choropleth maps and bar charts.",
-      pt = "Indicadores do mercado de trabalho por estado com mapas coropleticos interativos e graficos de barras."
+      pt = "Indicadores do mercado de trabalho por estado com mapas coropl\u00e9ticos interativos e gr\u00e1ficos de barras."
     ),
     feature_package_title = list(
       en = "Open Source Package",
@@ -656,7 +661,7 @@ translations <- list(
     ),
     feature_package_desc = list(
       en = "Built on the PNADCperiods R package. Full methodology and documentation available on GitHub.",
-      pt = "Construido sobre o pacote R PNADCperiods. Metodologia completa e documentacao disponivel no GitHub."
+      pt = "Constru\u00eddo sobre o pacote R PNADCperiods. Metodologia completa e documenta\u00e7\u00e3o dispon\u00edvel no GitHub."
     ),
     btn_methodology = list(
       en = "Methodology",
@@ -664,7 +669,7 @@ translations <- list(
     ),
     btn_documentation = list(
       en = "Documentation",
-      pt = "Documentacao"
+      pt = "Documenta\u00e7\u00e3o"
     ),
     footer_package_label = list(
       en = "[Package]",
@@ -676,7 +681,7 @@ translations <- list(
     ),
     footer_disclaimer = list(
       en = "Monthly estimates are not official IBGE statistics. For official data, visit sidra.ibge.gov.br.",
-      pt = "As estimativas mensais nao sao estatisticas oficiais do IBGE. Para dados oficiais, visite sidra.ibge.gov.br."
+      pt = "As estimativas mensais n\u00e3o s\u00e3o estat\u00edsticas oficiais do IBGE. Para dados oficiais, visite sidra.ibge.gov.br."
     )
   ),
 

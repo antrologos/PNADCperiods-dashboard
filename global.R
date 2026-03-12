@@ -88,103 +88,94 @@ default_lang <- "pt"
 # Data Loading
 # ==============================================================================
 
+# Lazy loader: reads an RDS file on first access, caches for subsequent calls
+make_lazy_loader <- function(path) {
+  cache <- NULL
+  function() {
+    if (is.null(cache) && file.exists(path)) {
+      cache <<- readRDS(path)
+    }
+    cache
+  }
+}
+
 # Load precomputed data (if available)
+# Small/always-needed files are loaded eagerly; large tab-specific files use lazy loaders
 load_app_data <- function() {
   data_dir <- "data"
 
-  # Initialize empty list for data
   app_data <- list(
+    # Eager data (small, needed by Home / Series Explorer)
     monthly_sidra = NULL,
     rolling_quarters = NULL,
     series_metadata = NULL,
     deseasonalized_cache = NULL,
-    last_updated = NULL,
-    # Geographic data (Phase 3)
-    geographic_data = NULL,
-    geo_last_updated = NULL,
-    # Inequality & Poverty data
-    inequality_data = NULL,
-    income_shares_data = NULL,
-    lorenz_data = NULL,
-    income_decomposition_data = NULL,
-    poverty_data = NULL
+    last_updated = NULL
   )
 
-  # Load series metadata
+  # --- Eager loads (always needed, ~160 KB total) ---
+
   metadata_path <- file.path(data_dir, "series_metadata.rds")
   if (file.exists(metadata_path)) {
     app_data$series_metadata <- readRDS(metadata_path)
   }
 
-  # Load mensalized SIDRA series
   monthly_path <- file.path(data_dir, "monthly_sidra.rds")
   if (file.exists(monthly_path)) {
     app_data$monthly_sidra <- readRDS(monthly_path)
     app_data$last_updated <- file.mtime(monthly_path)
   }
 
-  # Load rolling quarters
   rolling_path <- file.path(data_dir, "rolling_quarters.rds")
   if (file.exists(rolling_path)) {
     app_data$rolling_quarters <- readRDS(rolling_path)
   }
 
-  # Load precomputed de-seasonalized series (if available)
   deseason_path <- file.path(data_dir, "deseasonalized_cache.rds")
   if (file.exists(deseason_path)) {
     app_data$deseasonalized_cache <- readRDS(deseason_path)
   }
 
-  # Load geographic data (Phase 3)
-  # Prefer state_monthly_data.rds (from microdata), fall back to geographic_data.rds (SIDRA)
+  # --- Lazy loads (tab-specific, loaded on first visit) ---
+
+  # Geographic tab (~540 KB)
   state_monthly_path <- file.path(data_dir, "state_monthly_data.rds")
   geo_path <- file.path(data_dir, "geographic_data.rds")
-
   if (file.exists(state_monthly_path)) {
-    app_data$geographic_data <- readRDS(state_monthly_path)
+    app_data$get_geographic_data <- make_lazy_loader(state_monthly_path)
     app_data$geo_last_updated <- file.mtime(state_monthly_path)
   } else if (file.exists(geo_path)) {
-    # Fallback to old SIDRA data (rename field for compatibility)
-    geo_data <- readRDS(geo_path)
-    if ("anomesfinaltrimmovel" %in% names(geo_data)) {
-      data.table::setnames(geo_data, "anomesfinaltrimmovel", "ref_month")
-    }
-    app_data$geographic_data <- geo_data
+    # Fallback: wrap in a loader that renames field for compatibility
+    app_data$get_geographic_data <- local({
+      cache <- NULL
+      function() {
+        if (is.null(cache)) {
+          geo_data <- readRDS(geo_path)
+          if ("anomesfinaltrimmovel" %in% names(geo_data)) {
+            data.table::setnames(geo_data, "anomesfinaltrimmovel", "ref_month")
+          }
+          cache <<- geo_data
+        }
+        cache
+      }
+    })
     app_data$geo_last_updated <- file.mtime(geo_path)
+  } else {
+    app_data$get_geographic_data <- function() NULL
+    app_data$geo_last_updated <- NULL
   }
 
-  # Load Brazil state shapefile for choropleth maps
   sf_path <- file.path(data_dir, "brazil_states_sf.rds")
-  if (file.exists(sf_path)) {
-    app_data$brazil_states_sf <- readRDS(sf_path)
-  }
+  app_data$get_brazil_states_sf <- make_lazy_loader(sf_path)
 
-  # Load inequality data
-  ineq_path <- file.path(data_dir, "inequality_data.rds")
-  if (file.exists(ineq_path)) {
-    app_data$inequality_data <- readRDS(ineq_path)
-  }
+  # Inequality tab (~2.35 MB)
+  app_data$get_inequality_data <- make_lazy_loader(file.path(data_dir, "inequality_data.rds"))
+  app_data$get_income_shares_data <- make_lazy_loader(file.path(data_dir, "income_shares_data.rds"))
+  app_data$get_lorenz_data <- make_lazy_loader(file.path(data_dir, "lorenz_data.rds"))
+  app_data$get_income_decomposition_data <- make_lazy_loader(file.path(data_dir, "income_decomposition_data.rds"))
 
-  shares_path <- file.path(data_dir, "income_shares_data.rds")
-  if (file.exists(shares_path)) {
-    app_data$income_shares_data <- readRDS(shares_path)
-  }
-
-  lorenz_path <- file.path(data_dir, "lorenz_data.rds")
-  if (file.exists(lorenz_path)) {
-    app_data$lorenz_data <- readRDS(lorenz_path)
-  }
-
-  decomp_path <- file.path(data_dir, "income_decomposition_data.rds")
-  if (file.exists(decomp_path)) {
-    app_data$income_decomposition_data <- readRDS(decomp_path)
-  }
-
-  # Load poverty data
-  poverty_path <- file.path(data_dir, "poverty_data.rds")
-  if (file.exists(poverty_path)) {
-    app_data$poverty_data <- readRDS(poverty_path)
-  }
+  # Poverty tab (~2.6 MB)
+  app_data$get_poverty_data <- make_lazy_loader(file.path(data_dir, "poverty_data.rds"))
 
   app_data
 }

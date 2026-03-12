@@ -32,6 +32,10 @@ ui <- page_navbar(
   header = tagList(
     useShinyjs(),
     tags$head(
+      # Prevent stale caching by mobile carriers/proxies
+      tags$meta(`http-equiv` = "Cache-Control", content = "no-cache, no-store, must-revalidate"),
+      tags$meta(`http-equiv` = "Pragma", content = "no-cache"),
+      tags$meta(`http-equiv` = "Expires", content = "0"),
       tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
       # JavaScript for language toggle and slider formatting
       tags$script(HTML("
@@ -57,6 +61,17 @@ ui <- page_navbar(
           localStorage.setItem('pnadc_lang', lang);
           Shiny.setInputValue('selected_lang', lang, {priority: 'event'});
         }
+
+        // Navigate to a tab by its data-value attribute (used by home page cards)
+        function goToTab(tabName) {
+          var el = document.querySelector('[data-value=\"' + tabName + '\"]');
+          if (el) el.click();
+        }
+
+        // Auto-reconnect on disconnect (reload after 3 seconds)
+        $(document).on('shiny:disconnected', function(event) {
+          setTimeout(function() { location.reload(); }, 3000);
+        });
 
         // Format date slider tooltips to show only month and year
         $(document).on('shiny:inputchanged', function(event) {
@@ -216,22 +231,23 @@ server <- function(input, output, session) {
   # --------------------------------------------------------------------------
 
   # Initialize reactive values for shared data
+  # Small/always-needed data stored directly; large tab-specific data uses lazy loaders
   shared_data <- reactiveValues(
+    # Eager data (Home / Series Explorer)
     monthly_sidra = app_data$monthly_sidra,
     rolling_quarters = app_data$rolling_quarters,
     series_metadata = app_data$series_metadata,
     deseasonalized_cache = app_data$deseasonalized_cache,
     last_updated = app_data$last_updated,
-    # Geographic data (Phase 3)
-    geographic_data = app_data$geographic_data,
+    # Lazy loaders (load on first tab visit, then cached)
     geo_last_updated = app_data$geo_last_updated,
-    brazil_states_sf = app_data$brazil_states_sf,
-    # Inequality & Poverty data
-    inequality_data = app_data$inequality_data,
-    income_shares_data = app_data$income_shares_data,
-    lorenz_data = app_data$lorenz_data,
-    income_decomposition_data = app_data$income_decomposition_data,
-    poverty_data = app_data$poverty_data
+    get_geographic_data = app_data$get_geographic_data,
+    get_brazil_states_sf = app_data$get_brazil_states_sf,
+    get_inequality_data = app_data$get_inequality_data,
+    get_income_shares_data = app_data$get_income_shares_data,
+    get_lorenz_data = app_data$get_lorenz_data,
+    get_income_decomposition_data = app_data$get_income_decomposition_data,
+    get_poverty_data = app_data$get_poverty_data
   )
 
   # --------------------------------------------------------------------------

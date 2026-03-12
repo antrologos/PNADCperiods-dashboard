@@ -639,7 +639,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
     # --------------------------------------------------------------------------
 
     geo_data <- reactive({
-      shared_data$geographic_data
+      shared_data$get_geographic_data()
     })
 
     # --------------------------------------------------------------------------
@@ -903,7 +903,7 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       data <- filtered_geo_data()
 
       # Get shapefile from shared_data
-      brazil_states_sf <- shared_data$brazil_states_sf
+      brazil_states_sf <- shared_data$get_brazil_states_sf()
 
       validate(
         need(!is.null(data), "Loading data..."),
@@ -925,29 +925,12 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
       sf_data <- brazil_states_sf
       sf_data$uf_code <- as.character(sf_data$uf_code)
 
-      # Create lookup from data
-      data_lookup <- setNames(as.list(data$value), as.character(data$uf_code))
-      abbrev_lookup <- setNames(as.list(data$uf_abbrev), as.character(data$uf_code))
-      name_lookup <- setNames(as.list(data$uf_name), as.character(data$uf_code))
-      region_lookup <- setNames(as.list(data$region), as.character(data$uf_code))
-
-      # Add columns by matching - use vapply for guaranteed return type
-      sf_data$value <- vapply(sf_data$uf_code, function(x) {
-        v <- data_lookup[[x]]
-        if (is.null(v)) NA_real_ else as.numeric(v)
-      }, FUN.VALUE = numeric(1))
-      sf_data$uf_abbrev <- vapply(sf_data$uf_code, function(x) {
-        v <- abbrev_lookup[[x]]
-        if (is.null(v)) NA_character_ else as.character(v)
-      }, FUN.VALUE = character(1))
-      sf_data$uf_name <- vapply(sf_data$uf_code, function(x) {
-        v <- name_lookup[[x]]
-        if (is.null(v)) NA_character_ else as.character(v)
-      }, FUN.VALUE = character(1))
-      sf_data$region <- vapply(sf_data$uf_code, function(x) {
-        v <- region_lookup[[x]]
-        if (is.null(v)) NA_character_ else as.character(v)
-      }, FUN.VALUE = character(1))
+      # Match sf rows to data rows by uf_code (single vectorized lookup)
+      match_idx <- match(sf_data$uf_code, as.character(data$uf_code))
+      sf_data$value <- data$value[match_idx]
+      sf_data$uf_abbrev <- data$uf_abbrev[match_idx]
+      sf_data$uf_name <- data$uf_name[match_idx]
+      sf_data$region <- data$region[match_idx]
 
       # Get unit type for this indicator
       unit_type <- if (length(idx) > 0) {
@@ -1447,8 +1430,15 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
             limits = color_domain  # Fixed limits across all periods
           ) +
           labs(
-            title = output$map_title(),
-            subtitle = output$map_subtitle(),
+            title = {
+              desc_col <- if(lang_val == "en") "description_en" else "description_pt"
+              idx_ind <- which(geographic_indicators$indicator_id == input$indicator)
+              if (length(idx_ind) > 0) geographic_indicators[[desc_col]][idx_ind] else input$indicator
+            },
+            subtitle = {
+              period_label <- format_date_i18n(as.integer(input$period), lang_val, format = "long")
+              if(lang_val == "en") paste("Reference month:", period_label) else paste("Mes de referencia:", period_label)
+            },
             x = NULL, y = NULL,
             caption = paste("Source: IBGE/PNAD Continua |", Sys.Date())
           ) +
