@@ -13,17 +13,6 @@ source_pipeline_R <- function() {
   }
 }
 
-# Minimal IBGE FTP HTML listing
-fixture_ibge_listing_html <- function() {
-  '<html><body><pre><a href="../">../</a>
-  <a href="PNADC_012024.zip">PNADC_012024.zip</a>      24-Feb-2024 14:23
-  <a href="PNADC_022024.zip">PNADC_022024.zip</a>      24-May-2024 09:11
-  <a href="PNADC_022024_20260324.zip">PNADC_022024_20260324.zip</a>  24-Mar-2026 09:11
-  <a href="PNADC_032024.zip">PNADC_032024.zip</a>      24-Aug-2024 11:02
-  <a href="PNADC_2020_visita5_20250822.zip">PNADC_2020_visita5_20250822.zip</a>  22-Aug-2025 16:00
-  </pre></body></html>'
-}
-
 # Minimal local inventory data.table (in-memory, no disk)
 fixture_local_inventory <- function(basenames, dir = "/tmp/fixture") {
   data.table::data.table(

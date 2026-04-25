@@ -8,6 +8,12 @@
 
 # ------------------------------------------------------------------------------
 # Filesystem roots
+#
+# Acervo (custody): user-curated local mirror of the IBGE microdata. The
+# pipeline's Layer 1 only INSPECTS this folder and ASKS PNADcIBGE for files
+# that are missing. When IBGE republishes a quarter or visit (reweighting),
+# the user removes the local file manually; the next `tar_make()` will
+# detect MISSING and re-download via PNADcIBGE.
 # ------------------------------------------------------------------------------
 
 tar_acervo_root <- function() {
@@ -34,10 +40,6 @@ tar_processed_cache_dir <- function() {
     "PNADC_PROCESSED_DIR",
     file.path(tar_project_root(), "data", "processed")
   )
-}
-
-tar_archive_dir <- function() {
-  file.path(tar_acervo_root(), "_archive")
 }
 
 # ------------------------------------------------------------------------------
@@ -69,7 +71,7 @@ get_default_visit <- function(year) {
 
 quarterly_required_vars <- c(
   "Ano", "Trimestre", "UPA", "V1008", "V1014",
-  "V2003", "V2008", "V20081", "V20082", "V2009",
+  "V2003", "V2005", "V2008", "V20081", "V20082", "V2009",
   "V1028", "UF", "posest", "posest_sxi", "Estrato",
   # Labor market vars used by state_monthly_data
   "VD4001", "VD4002", "VD4003", "VD4004", "VD4004A",
@@ -111,27 +113,26 @@ expected_n_rows <- list(
 )
 
 # ------------------------------------------------------------------------------
-# IBGE FTP root (HTTPS) — used by tar-acervo.R for directory listings
-# ------------------------------------------------------------------------------
-
-ibge_ftp_root <- function() {
-  paste0(
-    "https://ftp.ibge.gov.br/Trabalho_e_Rendimento/",
-    "Pesquisa_Nacional_por_Amostra_de_Domicilios_continua/"
-  )
-}
-
-ibge_ftp_subpaths <- list(
-  quarterly = "Trimestral/Microdados/",
-  annual    = "Anual/Microdados/Visita/",
-  deflator  = "Anual/Documentacao_Geral/"
-)
-
-# ------------------------------------------------------------------------------
 # Reference date for deflation (used by tar-microdata.R)
 # ------------------------------------------------------------------------------
 
 deflation_target_date <- "12/2025"
+
+# ------------------------------------------------------------------------------
+# VD4004 / VD4004A boundary
+#
+# VD4004  = subocupação por horas EFETIVAS (canonical 2012-Q1 to 2015-Q3).
+# VD4004A = subocupação por horas HABITUAIS (canonical 2015-Q4 onward; absent
+#           from microdata before 2015-Q4).
+#
+# SIDRA backfills tables 6438 and 6785 to 201203 using VD4004 then switches
+# to VD4004A from 201510 onward (Hecksher reference Stata code,
+# code/original_codes/MensalizacaoPNADC_VersaoNov2024.do:356-357).
+# Mirror the explicit cutoff to stay SIDRA-compatible without depending on
+# NA-coalescence.
+# ------------------------------------------------------------------------------
+
+vd4004_split_yyyymm <- 201509L
 
 # ------------------------------------------------------------------------------
 # fst threading guard (avoids worker oversubscription when targets parallelizes)

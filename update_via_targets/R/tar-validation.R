@@ -153,7 +153,8 @@ dashboard_asset_specs <- list(
   ),
   brazil_states_sf = list(
     required_cols = c("uf_code", "uf_abbrev", "uf_name", "geometry"),
-    min_rows = 26L
+    # Brazil has 27 federal units: 26 states + Distrito Federal.
+    min_rows = 27L
   ),
   geographic_data = list(
     required_cols = c("uf_code", "anomesfinaltrimmovel", "value", "indicator"),

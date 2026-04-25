@@ -26,6 +26,8 @@ test_that("DAG parses and contains the expected core targets", {
           "expected_quarters", "expected_visits",
           "quarterly_inventory", "annual_inventory",
           "quarterly_plan", "annual_plan",
+          "quarterly_manifest_partial", "annual_manifest_partial",
+          "quarterly_manifest", "annual_manifest",
           "acervo_manifest", "acervo_manifest_csv",
           "deflator_path",
           "prepared_microdata_fst",
@@ -36,6 +38,13 @@ test_that("DAG parses and contains the expected core targets", {
           "sidra_rolling_qs2", "sidra_deseasonalized_qs2",
           "dashboard_validation", "pipeline_done"
         )
+        # Targets that should NOT exist after Camada 1 simplification
+        forbidden_targets <- c(
+          "quarterly_remote_listing", "annual_remote_listing",
+          "acervo_archive_root"
+        )
+        present_forbidden <- intersect(forbidden_targets, man$name)
+        expect_length(present_forbidden, 0L)
         missing <- setdiff(expected_targets, man$name)
         expect_length(missing, 0L)
       }

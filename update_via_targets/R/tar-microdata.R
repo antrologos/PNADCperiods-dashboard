@@ -41,7 +41,7 @@ build_prepared_microdata <- function(acervo_manifest,
   # Quarterly: all rows with file_type == "quarterly" and a usable status
   qf <- acervo_manifest[
     file_type == "quarterly" &
-      status %in% c("OK", "DOWNLOADED_NEW", "REDOWNLOADED_REWEIGHT") &
+      status %in% c("OK", "DOWNLOADED_NEW") &
       !is.na(local_path)
   ]
   if (!nrow(qf)) stop("No quarterly files available in manifest.")
@@ -66,7 +66,7 @@ build_prepared_microdata <- function(acervo_manifest,
   # Annual: filter to chosen visit
   af <- acervo_manifest[
     file_type == "annual" &
-      status %in% c("OK", "DOWNLOADED_NEW", "REDOWNLOADED_REWEIGHT") &
+      status %in% c("OK", "DOWNLOADED_NEW") &
       !is.na(local_path)
   ]
   af[, default_visit := get_default_visit(year)]
@@ -92,8 +92,10 @@ build_prepared_microdata <- function(acervo_manifest,
   d <- apply_periods_annual(annual_data, crosswalk)
   rm(annual_data, crosswalk); gc()
 
-  # Filter household members
-  d <- d[v2005 <= 14 | v2005 == 16]
+  # Filter to IBGE's household-income membership: keep all residents,
+  # excluding only V2005 in {17, 18, 19} (pensionista, empregado domestico,
+  # parente do empregado domestico). Matches IBGE VD2003 / VD3003.
+  d <- d[!v2005 %in% c(17L, 18L, 19L)]
 
   # Deflate
   d <- deflate_incomes(d, deflator_path)
@@ -253,6 +255,10 @@ build_pc_income_components <- function(d) {
     }
   }
 
+  # Sum each component independently before combining: a row with one of
+  # `renda_doacoes` or `renda_bolsas` NA (e.g. deflator merge gap) would
+  # otherwise drop its surviving sibling because `NA + value = NA` is then
+  # discarded by `na.rm = TRUE`.
   hh <- d[, .(
     hh_trab_ha    = sum(renda_trab_ha, na.rm = TRUE),
     hh_trab_ef    = sum(renda_trab_ef, na.rm = TRUE),
@@ -262,7 +268,8 @@ build_pc_income_components <- function(d) {
     hh_outprogs   = sum(renda_outprogs, na.rm = TRUE),
     hh_segdesemp  = sum(renda_segdesemp, na.rm = TRUE),
     hh_alugueis   = sum(renda_alugueis, na.rm = TRUE),
-    hh_outros     = sum(renda_doacoes + renda_bolsas, na.rm = TRUE),
+    hh_outros     = sum(renda_doacoes, na.rm = TRUE) +
+                    sum(renda_bolsas,  na.rm = TRUE),
     n_members     = .N
   ), by = .(Ano, Trimestre, id_dom)]
 
@@ -653,7 +660,7 @@ build_state_monthly <- function(acervo_manifest, dest_path) {
   set_fst_threads(2L)
   qf <- acervo_manifest[
     file_type == "quarterly" &
-      status %in% c("OK", "DOWNLOADED_NEW", "REDOWNLOADED_REWEIGHT") &
+      status %in% c("OK", "DOWNLOADED_NEW") &
       !is.na(local_path)
   ]
   if (!nrow(qf)) stop("No quarterly files available for state_monthly.")
@@ -679,22 +686,30 @@ build_state_monthly <- function(acervo_manifest, dest_path) {
     }
   }
 
+  # VD4004 vs VD4004A: SIDRA backfills tables 6438/6785 to 201203 using VD4004
+  # for 2012-Q1 to 2015-Q3 and VD4004A from 2015-Q4 onward. Mirror that exact
+  # cutoff (vd4004_split_yyyymm = 201509 in tar-config.R). The pre-2015-Q4
+  # microdata has no VD4004A column, so use VD4004; from 2015-Q4 onward use
+  # VD4004A even when VD4004 is also populated (they measure different things:
+  # efetivamente vs. habitualmente trabalhadas).
+  is_pre_split <- pnadc$Ano < 2015L | (pnadc$Ano == 2015L & pnadc$Trimestre <= 3L)
+
   pnadc[, `:=`(
     pop14mais = 1L,
     pea = data.table::fifelse(VD4001 == 1, 1L, 0L),
-    employed = data.table::fifelse(VD4002 == 1, 1L, 0L),
+    employed = data.table::fifelse(VD4001 == 1 & VD4002 == 1, 1L, 0L),
     unemployed = data.table::fifelse(VD4001 == 1 & VD4002 == 2, 1L, 0L),
     fora_forca = data.table::fifelse(VD4001 == 2, 1L, 0L),
     subocuphoras = data.table::fifelse(
-      !is.na(VD4004A) & VD4004A == 1, 1L,
-      data.table::fifelse(!is.na(VD4004) & VD4004 == 1, 1L, 0L)
+      is_pre_split,
+      data.table::fifelse(!is.na(VD4004) & VD4004 == 1, 1L, 0L),
+      data.table::fifelse(!is.na(VD4004A) & VD4004A == 1, 1L, 0L)
     ),
     forcapotencial = data.table::fifelse(VD4003 == 1, 1L, 0L),
     desalentado = data.table::fifelse(VD4005 == 1, 1L, 0L),
     contribuinte = data.table::fifelse(VD4002 == 1 & VD4012 == 1, 1L, 0L)
   )]
 
-  has_v4019 <- "V4019" %in% names(pnadc)
   pnadc[, `:=`(
     empregprivcomcart = data.table::fifelse(VD4009 == 1, 1L, 0L),
     empregprivsemcart = data.table::fifelse(VD4009 == 2, 1L, 0L),
@@ -707,16 +722,23 @@ build_state_monthly <- function(acervo_manifest, dest_path) {
     contapropria      = data.table::fifelse(VD4009 == 9, 1L, 0L),
     trabfamauxiliar   = data.table::fifelse(VD4009 == 10, 1L, 0L)
   )]
-  if (has_v4019) {
-    pnadc[, `:=`(
-      contapropriacomcnpj = data.table::fifelse(VD4009 == 9 & V4019 == 1, 1L, 0L),
-      contapropriasemcnpj = data.table::fifelse(VD4009 == 9 & V4019 == 2, 1L, 0L)
+
+  # Per-row CNPJ logic for self-employed informality.
+  # When V4019 is absent OR NA on a given row, conservatively treat the
+  # self-employed person as "sem CNPJ" (informal). This is robust to mixed
+  # stacks where some quarters have V4019 and others don't (rbindlist fills
+  # NA for missing columns).
+  if ("V4019" %in% names(pnadc)) {
+    pnadc[, contapropriasemcnpj := data.table::fifelse(
+      VD4009 == 9,
+      data.table::fifelse(is.na(V4019) | V4019 == 2, 1L, 0L),
+      0L
     )]
-    pnadc[, informal := empregprivsemcart + domesticosemcart +
-            contapropriasemcnpj + trabfamauxiliar]
   } else {
-    pnadc[, informal := empregprivsemcart + domesticosemcart + contapropria + trabfamauxiliar]
+    pnadc[, contapropriasemcnpj := contapropria]
   }
+  pnadc[, informal := empregprivsemcart + domesticosemcart +
+          contapropriasemcnpj + trabfamauxiliar]
   pnadc[, `:=`(
     empregpriv = empregprivcomcart + empregprivsemcart,
     domestico = domesticocomcart + domesticosemcart,

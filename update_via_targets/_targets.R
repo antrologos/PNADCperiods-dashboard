@@ -64,22 +64,13 @@ tar_option_set(
 )
 
 # ------------------------------------------------------------------------------
-# Static branching ranges (Camada 1)
-#
-# `current_year` is itself a target with cue = always so re-running tar_make()
-# at the start of a new year picks up new annual visits without manual
-# intervention. Note that tar_map() values are evaluated EAGERLY at script
-# parse time — on year roll-over, the user must restart the R session for
-# new branches to appear in the DAG. This is documented in CLAUDE.md.
-# ------------------------------------------------------------------------------
-
-current_year_static  <- as.integer(format(Sys.Date(), "%Y"))
-current_quarter_static <- ceiling(as.integer(format(Sys.Date(), "%m")) / 3)
-quarterly_years <- 2012L:current_year_static
-annual_years    <- 2012L:(current_year_static - 1L)
-
-# ------------------------------------------------------------------------------
 # Targets
+#
+# `current_year` and `current_quarter` are computed inside the target body via
+# `Sys.Date()` AND have cue = always, so each tar_make() picks up the calendar
+# year/quarter at run time (not at script-parse time). Downstream targets that
+# depend on them are re-evaluated, so a 2027 January `tar_make()` will see
+# year 2027 and add the new quarter to `expected_quarters`.
 # ------------------------------------------------------------------------------
 
 list(
@@ -90,18 +81,17 @@ list(
 
   tar_target(
     current_year,
-    current_year_static,
+    as.integer(format(Sys.Date(), "%Y")),
     cue = tar_cue(mode = "always")
   ),
 
   tar_target(
     current_quarter,
-    current_quarter_static,
+    ceiling(as.integer(format(Sys.Date(), "%m")) / 3),
     cue = tar_cue(mode = "always")
   ),
 
   tar_target(acervo_root,           tar_acervo_root()),
-  tar_target(acervo_archive_root,   tar_archive_dir()),
   tar_target(processed_cache_dir,   tar_processed_cache_dir()),
   tar_target(dashboard_data_dir,    tar_dashboard_data_dir()),
   tar_target(dashboard_data_dest,   resolve_dest_dir(dashboard_data_dir)),
@@ -185,29 +175,16 @@ list(
     cue = tar_cue(mode = "always")
   ),
 
-  # IBGE FTP listing — best-effort; NULL on offline
-  tar_target(
-    quarterly_remote_listing,
-    ibge_list_directory("quarterly"),
-    cue = tar_cue(mode = "always")
-  ),
-
-  tar_target(
-    annual_remote_listing,
-    ibge_list_directory("annual"),
-    cue = tar_cue(mode = "always")
-  ),
-
-  # Plan + apply (planning is pure; apply may download)
+  # Plan: each expected file is OK (already local) or MISSING (will be
+  # downloaded). Republication / reweighting detection is OUT of band — when
+  # IBGE reweights, the user removes the local file and reruns tar_make().
   tar_target(
     quarterly_plan,
     {
       p <- plan_acervo_actions(
         file_type = "quarterly",
         expected = expected_quarters,
-        local_inventory = quarterly_inventory,
-        remote_listing = quarterly_remote_listing,
-        manifest_prev = NULL
+        local_inventory = quarterly_inventory
       )
       p[, file_type := "quarterly"]
       p[]
@@ -220,9 +197,7 @@ list(
       p <- plan_acervo_actions(
         file_type = "annual",
         expected = expected_visits,
-        local_inventory = annual_inventory,
-        remote_listing = annual_remote_listing,
-        manifest_prev = NULL
+        local_inventory = annual_inventory
       )
       p[, file_type := "annual"]
       p[]
@@ -234,9 +209,7 @@ list(
     apply_acervo_plan(
       plan = quarterly_plan,
       file_type = "quarterly",
-      dest_dir = acervo_subpaths(acervo_root)$quarterly,
-      archive_root = acervo_archive_root,
-      subkind = "Trimestral/Dados"
+      dest_dir = acervo_subpaths(acervo_root)$quarterly
     ),
     error = "continue"
   ),
@@ -246,22 +219,19 @@ list(
     apply_acervo_plan(
       plan = annual_plan,
       file_type = "annual",
-      dest_dir = acervo_subpaths(acervo_root)$annual,
-      archive_root = acervo_archive_root,
-      subkind = "Anual/visitas"
+      dest_dir = acervo_subpaths(acervo_root)$annual
     ),
     error = "continue"
   ),
 
-  # Validate downloaded files (only those flagged DOWNLOADED_NEW or REWEIGHT)
+  # Validate downloaded files (only those flagged DOWNLOADED_NEW)
   tar_target(
     quarterly_manifest,
     {
       m <- data.table::copy(quarterly_manifest_partial)
       m[, validation_ok := TRUE]
       m[, validation_reason := NA_character_]
-      idx <- which(m$status %in% c("DOWNLOADED_NEW", "REDOWNLOADED_REWEIGHT") &
-                     !is.na(m$local_path))
+      idx <- which(m$status == "DOWNLOADED_NEW" & !is.na(m$local_path))
       for (i in idx) {
         v <- validate_downloaded_file(m$local_path[i], "quarterly", m$year[i])
         if (!isTRUE(v$ok)) {
@@ -282,8 +252,7 @@ list(
       m <- data.table::copy(annual_manifest_partial)
       m[, validation_ok := TRUE]
       m[, validation_reason := NA_character_]
-      idx <- which(m$status %in% c("DOWNLOADED_NEW", "REDOWNLOADED_REWEIGHT") &
-                     !is.na(m$local_path))
+      idx <- which(m$status == "DOWNLOADED_NEW" & !is.na(m$local_path))
       for (i in idx) {
         v <- validate_downloaded_file(m$local_path[i], "annual", m$year[i])
         if (!isTRUE(v$ok)) {
