@@ -184,9 +184,14 @@ list(
 
   tar_target(
     deflator_inventory,
+    # IBGE ships deflator_PNADC_YYYY.xls (uppercase PNADC); rest of the
+    # acervo uses lowercase pnadc_*. Only this inventory needs case-
+    # insensitive matching — the canonical basenames in expected_quarters
+    # / expected_visits are lowercase.
     inventory_local(
       acervo_subpaths(acervo_root)$deflator,
-      pattern = "^deflator_pnadc_\\d{4}\\.xls$"
+      pattern = "^deflator_pnadc_\\d{4}\\.xls$",
+      ignore.case = TRUE
     ),
     cue = tar_cue(mode = "always")
   ),
@@ -342,9 +347,14 @@ list(
     cue = tar_cue(mode = "always")
   ),
 
+  # `t0_backup_targets` is referenced via `force()` so that targets'
+  # dependency analyser sees an edge. This guarantees the backup
+  # actually runs BEFORE prepared_microdata_fst (and the Layer 3 cascade
+  # downstream) overwrites any pre-existing live files.
   tar_target(
     prepared_microdata_fst,
     {
+      force(t0_backup_targets)
       dir.create(processed_cache_dest, recursive = TRUE, showWarnings = FALSE)
       dest <- file.path(processed_cache_dest, "prepared_microdata.fst")
       build_prepared_microdata(
@@ -363,30 +373,39 @@ list(
 
   tar_target(
     inequality_assets,
-    build_inequality_outputs(
-      prepared_microdata_path = prepared_microdata_fst,
-      dest_dir = dashboard_data_dest,
-      utils_inequality_path = utils_inequality_path
-    ),
+    {
+      force(t0_backup_targets)
+      build_inequality_outputs(
+        prepared_microdata_path = prepared_microdata_fst,
+        dest_dir = dashboard_data_dest,
+        utils_inequality_path = utils_inequality_path
+      )
+    },
     format = "file"
   ),
 
   tar_target(
     poverty_asset,
-    build_poverty_outputs(
-      prepared_microdata_path = prepared_microdata_fst,
-      dest_dir = dashboard_data_dest,
-      utils_inequality_path = utils_inequality_path
-    ),
+    {
+      force(t0_backup_targets)
+      build_poverty_outputs(
+        prepared_microdata_path = prepared_microdata_fst,
+        dest_dir = dashboard_data_dest,
+        utils_inequality_path = utils_inequality_path
+      )
+    },
     format = "file"
   ),
 
   tar_target(
     state_monthly_asset,
-    build_state_monthly(
-      acervo_manifest = acervo_manifest,
-      dest_path = file.path(dashboard_data_dest, "state_monthly_data.rds")
-    ),
+    {
+      force(t0_backup_targets)
+      build_state_monthly(
+        acervo_manifest = acervo_manifest,
+        dest_path = file.path(dashboard_data_dest, "state_monthly_data.rds")
+      )
+    },
     format = "file"
   ),
 

@@ -201,18 +201,21 @@ deflate_incomes <- function(d, deflator_path) {
   d[, UF := as.numeric(UF)]
 
   # Refuse to silently propagate NA when the deflator XLS doesn't cover the
-  # microdata's full (Ano, Trimestre) range. IBGE updates the deflator
-  # yearly; running the pipeline on newer microdata than the deflator
-  # covers would otherwise produce NA hhinc_pc downstream.
-  d_periods <- unique(d[, .(Ano, Trimestre)])
-  defl_periods <- unique(deflator[, .(Ano, Trimestre)])
-  uncovered <- d_periods[!defl_periods, on = .(Ano, Trimestre)]
+  # microdata's full (Ano, Trimestre, UF) range. IBGE updates the deflator
+  # yearly and the merge keys on (Ano, Trimestre, UF) — partial UF coverage
+  # for a quarter would also leak NA into hhinc_pc.
+  d_keys <- unique(d[, .(Ano, Trimestre, UF)])
+  defl_keys <- unique(deflator[, .(Ano, Trimestre, UF)])
+  uncovered <- d_keys[!defl_keys, on = .(Ano, Trimestre, UF)]
   if (nrow(uncovered)) {
+    sample <- utils::head(uncovered, 10L)
     stop(sprintf(
-      "Deflator file '%s' does not cover %d microdata period(s): %s. Update the deflator XLS in %s.",
+      "Deflator file '%s' does not cover %d microdata key(s) on (Ano, Trimestre, UF). First %d: %s. Update the deflator XLS in %s.",
       basename(deflator_path),
       nrow(uncovered),
-      paste(sprintf("%d-Q%d", uncovered$Ano, uncovered$Trimestre),
+      nrow(sample),
+      paste(sprintf("%d-Q%d-UF%02d",
+                    sample$Ano, sample$Trimestre, sample$UF),
             collapse = ", "),
       dirname(deflator_path)
     ), call. = FALSE)

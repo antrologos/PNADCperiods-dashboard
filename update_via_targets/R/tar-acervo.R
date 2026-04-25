@@ -52,7 +52,7 @@ list_expected_visits <- function(up_to_year) {
 #' @param dir character directory path
 #' @param pattern regex passed to list.files()
 #' @return data.table(basename, path, size_bytes, mtime_utc)
-inventory_local <- function(dir, pattern, ignore.case = TRUE) {
+inventory_local <- function(dir, pattern, ignore.case = FALSE) {
   if (!dir.exists(dir)) {
     return(data.table::data.table(
       basename = character(),

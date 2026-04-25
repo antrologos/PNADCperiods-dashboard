@@ -141,6 +141,8 @@ dashboard_asset_specs <- list(
   inequality_data = list(
     required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value",
                       "measure", "value", "n_obs", "period"),
+    # Enforced by validate_dashboard_asset: every value of `measure` must
+    # belong to this set. Catches builder regressions that rename measures.
     measure_levels = c("gini", "palma", "p90p10", "p90p50", "p50p10",
                        "top1_share", "top5_share", "top10_share",
                        "bottom50_share", "mean_income", "median_income"),
@@ -152,11 +154,17 @@ dashboard_asset_specs <- list(
     min_rows = 500L
   ),
   lorenz_data = list(
-    required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value"),
+    # `p` and `lorenz` are the load-bearing payload columns plotted by
+    # mod_inequality.R; if utils_inequality.R::lorenz_points() ever renames
+    # them (e.g., to pop_share / income_share), we want a loud failure here.
+    required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value",
+                      "p", "lorenz"),
     min_rows = 1000L
   ),
   income_decomposition_data = list(
-    required_cols = c("ref_month_yyyymm", "income_source", "period"),
+    required_cols = c("ref_month_yyyymm", "income_source", "period",
+                      "concentration_coeff", "income_share",
+                      "contribution_to_gini"),
     min_rows = 50L
   ),
   poverty_data = list(
@@ -167,7 +175,9 @@ dashboard_asset_specs <- list(
   ),
   state_monthly_data = list(
     required_cols = c("ref_month", "uf_code", "indicator", "value"),
-    min_rows = 5000L
+    # 27 UF x ~21 indicators x ~150 months ~ 85k rows. Keep a loose floor
+    # that still catches gross truncation but tolerates incremental builds.
+    min_rows = 20000L
   ),
   brazil_states_sf = list(
     required_cols = c("uf_code", "uf_abbrev", "uf_name", "geometry"),
@@ -176,7 +186,11 @@ dashboard_asset_specs <- list(
   ),
   geographic_data = list(
     required_cols = c("uf_code", "anomesfinaltrimmovel", "value", "indicator"),
-    min_rows = 0L  # may legitimately be empty if SIDRA fallback unused
+    # SIDRA fetch returning an empty stub is operationally a degraded
+    # state — the geographic tab depends on this fallback when the
+    # microdata-based state_monthly_data is unavailable. Refuse silent
+    # empties and force the user to investigate.
+    min_rows = 1L
   )
 )
 
@@ -214,6 +228,20 @@ validate_dashboard_asset <- function(path, asset_id) {
                        nr, spec$min_rows)
     ))
   }
+
+  # Optional: enforce that a categorical column takes values in a known set.
+  if (!is.null(spec$measure_levels) && "measure" %in% cols) {
+    actual <- unique(obj[["measure"]])
+    unknown <- setdiff(actual, spec$measure_levels)
+    if (length(unknown)) {
+      return(list(
+        ok = FALSE,
+        reason = sprintf("unknown measure level(s): %s",
+                         paste(unknown, collapse = ", "))
+      ))
+    }
+  }
+
   list(ok = TRUE, reason = NA_character_)
 }
 

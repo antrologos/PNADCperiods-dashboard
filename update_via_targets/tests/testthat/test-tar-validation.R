@@ -46,6 +46,57 @@ test_that("validate_dashboard_asset rejects below-min-rows", {
   unlink(tmp)
 })
 
+test_that("validate_dashboard_asset enforces measure_levels for inequality_data", {
+  source_pipeline_R()
+  d <- data.table::data.table(
+    ref_month_yyyymm = rep(202301L, 1100L),
+    breakdown_type = "overall",
+    breakdown_value = "Nacional",
+    measure = c(rep("gini", 1099L), "g_index"),  # one unknown measure
+    value = runif(1100L),
+    n_obs = 100L,
+    period = as.Date("2023-01-15")
+  )
+  tmp <- tempfile(fileext = ".rds")
+  saveRDS(d, tmp)
+  res <- validate_dashboard_asset(tmp, "inequality_data")
+  expect_false(res$ok)
+  expect_match(res$reason, "unknown measure level")
+  unlink(tmp)
+})
+
+test_that("validate_dashboard_asset accepts lorenz_data with p+lorenz columns", {
+  source_pipeline_R()
+  d <- data.table::data.table(
+    ref_month_yyyymm = rep(202301L, 1100L),
+    breakdown_type = "overall",
+    breakdown_value = "Nacional",
+    p = seq(0, 1, length.out = 1100L),
+    lorenz = seq(0, 1, length.out = 1100L)^2
+  )
+  tmp <- tempfile(fileext = ".rds")
+  saveRDS(d, tmp)
+  res <- validate_dashboard_asset(tmp, "lorenz_data")
+  expect_true(res$ok)
+  unlink(tmp)
+})
+
+test_that("validate_dashboard_asset rejects lorenz_data missing p+lorenz columns", {
+  source_pipeline_R()
+  d <- data.table::data.table(
+    ref_month_yyyymm = rep(202301L, 1100L),
+    breakdown_type = "overall",
+    breakdown_value = "Nacional"
+    # missing p, lorenz
+  )
+  tmp <- tempfile(fileext = ".rds")
+  saveRDS(d, tmp)
+  res <- validate_dashboard_asset(tmp, "lorenz_data")
+  expect_false(res$ok)
+  expect_match(res$reason, "missing columns")
+  unlink(tmp)
+})
+
 test_that("validate_all_assets aborts with detailed message on failure", {
   source_pipeline_R()
   good_path <- tempfile(fileext = ".rds")

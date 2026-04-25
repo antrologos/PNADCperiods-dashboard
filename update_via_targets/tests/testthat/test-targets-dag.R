@@ -22,20 +22,32 @@ test_that("DAG parses and contains the expected core targets", {
         expect_true(nrow(man) > 10L)
 
         expected_targets <- c(
+          # Configuration / paths
           "current_year", "current_quarter",
+          "acervo_root", "processed_cache_dir", "dashboard_data_dir",
+          "dashboard_data_dest", "processed_cache_dest",
+          "utils_inequality_path",
+          # Migration safety gate (must exist; depends_on edge enforced
+          # via force(t0_backup_targets) in Layer 2/3 builders)
+          "t0_backup_targets",
+          # Camada 1
           "expected_quarters", "expected_visits",
-          "quarterly_inventory", "annual_inventory",
+          "quarterly_inventory", "annual_inventory", "deflator_inventory",
           "quarterly_plan", "annual_plan",
           "quarterly_manifest_partial", "annual_manifest_partial",
           "quarterly_manifest", "annual_manifest",
           "acervo_manifest", "acervo_manifest_csv",
           "deflator_path",
+          # Camada 2
           "prepared_microdata_fst",
+          # Camada 3
           "inequality_assets", "poverty_asset",
           "state_monthly_asset", "brazil_states_sf_asset",
           "geographic_fallback_asset",
+          # SIDRA inputs (external)
           "sidra_series_metadata_qs2", "sidra_monthly_qs2",
           "sidra_rolling_qs2", "sidra_deseasonalized_qs2",
+          # Final gates
           "dashboard_validation", "pipeline_done"
         )
         # Targets that should NOT exist after Camada 1 simplification
