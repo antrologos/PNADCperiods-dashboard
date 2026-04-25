@@ -29,9 +29,9 @@ suppressPackageStartupMessages({
   library(httr2)
 })
 # Note: uploads are done via the `gh` CLI (system2()), not piggyback,
-# because piggyback::pb_upload 0.1.5 chokes on empty releases.
-# `piggyback` is still installed via install_deps.R for the dashboard's
-# Phase 3 use of pb_download() at startup.
+# because piggyback::pb_upload 0.1.5 chokes on empty releases. The
+# dashboard side (Phase 3) downloads release assets directly with
+# `httr2`, so piggyback is no longer needed anywhere in this repo.
 
 # Source helpers from the dashboard repo (working dir = repo root).
 source("R/constants.R")

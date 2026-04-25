@@ -23,12 +23,14 @@ Imports:
     shinyjs,
     leaflet (>= 2.1.0),
     sf,
-    htmltools
+    htmltools,
+    qs2 (>= 0.1.0),
+    httr2 (>= 1.0.0),
+    jsonlite (>= 1.8.0)
 Suggests:
     seasonal,
     forecast,
     geobr,
     ineq,
-    sidrar,
     deflateBR,
     openxlsx

@@ -8,7 +8,7 @@
 
 cat(R.version.string, "\n")
 
-PKGS <- c("PNADCperiods", "piggyback", "qs2", "jsonlite", "data.table",
+PKGS <- c("PNADCperiods", "qs2", "jsonlite", "data.table",
           "seasonal", "forecast", "httr2", "x13binary")
 
 # RSPM Linux noble binary repo (ubuntu-latest = noble in 2026).
