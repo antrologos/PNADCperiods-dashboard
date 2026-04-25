@@ -23,8 +23,6 @@ jobs:
 
     env:
       ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      # Cached R library; install_deps.R writes here, fetch_sidra_daily.R reads.
-      R_LIBS_USER: ${{ runner.temp }}/Library
 
     steps:
       - name: Checkout repo
@@ -49,6 +47,8 @@ jobs:
         # setup-r-dependencies kept failing with `dependency conflict`
         # against the noble binary repo for our particular extras; this
         # bypass installs them directly from RSPM and caches the lib.
+        env:
+          R_LIBS_USER: ${{ runner.temp }}/Library
         run: |
           mkdir -p "$R_LIBS_USER"
           Rscript .github/scripts/install_deps.R
@@ -105,6 +105,7 @@ jobs:
       - name: Run fetch script
         env:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+          R_LIBS_USER: ${{ runner.temp }}/Library
         run: Rscript .github/scripts/fetch_sidra_daily.R
 
       - name: Summarize log in run summary
