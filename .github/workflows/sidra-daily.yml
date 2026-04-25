@@ -37,18 +37,21 @@ jobs:
           use-public-rspm: true
 
       - name: Install R packages (extras only, no DESCRIPTION deps)
+        # Version pinning would use `pkg@x.y.z` (no spaces) — DESCRIPTION-style
+        # `pkg (>= x.y)` is rejected by pak's pkg_refs parser. Left at floats
+        # for now; tighten with `pkg@x.y.z` if a CRAN bump ever breaks the run.
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           dependencies: '"NA"'
           extra-packages: |
-            any::PNADCperiods (>= 0.1.1)
-            any::piggyback (>= 0.1.5)
-            any::qs (>= 0.27.0)
-            any::jsonlite (>= 1.8.0)
-            any::data.table (>= 1.14.0)
-            any::seasonal (>= 1.10.0)
-            any::forecast (>= 8.21)
-            any::httr2 (>= 1.0.0)
+            any::PNADCperiods
+            any::piggyback
+            any::qs
+            any::jsonlite
+            any::data.table
+            any::seasonal
+            any::forecast
+            any::httr2
             any::x13binary
           cache-version: 1
 
