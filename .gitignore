@@ -17,6 +17,12 @@ data/*.rds
 data/*.fst
 data/*.qs2
 
+# SIDRA log artefact — published in release `data-latest`, not committed
+data/*.json
+
+# Staging output of update_via_targets/ pipeline (PNADC_PIPELINE_MODE=staging)
+data/_new/
+
 # But keep the data directory structure
 !data/.gitkeep
 

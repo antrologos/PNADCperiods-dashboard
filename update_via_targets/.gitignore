@@ -1,0 +1,13 @@
+# targets store (local; configured via TARGETS_STORE env var)
+_targets/
+_targets.yaml
+*.rds.tmp
+*.fst.tmp
+
+# scratch files
+.Rhistory
+.RData
+.Rproj.user/
+
+# staging outputs (pre-cutover)
+data/_new/
