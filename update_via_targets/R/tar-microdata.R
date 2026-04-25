@@ -15,7 +15,7 @@
 #   2. build_crosswalk()
 #   3. Read annual visits per get_default_visit() rule, harmonize income vars
 #   4. apply_periods_annual()
-#   5. Filter household members (V2005 <= 14 | V2005 == 16)
+#   5. Filter household members (drop V2005 in {17, 18, 19} per IBGE VD2003)
 #   6. Deflate incomes (CO2/CO2e + INPC to deflation_target_date)
 #   7. Construct 8 per-capita income components
 #   8. Create demographic grouping variables
@@ -688,11 +688,12 @@ build_state_monthly <- function(acervo_manifest, dest_path) {
 
   # VD4004 vs VD4004A: SIDRA backfills tables 6438/6785 to 201203 using VD4004
   # for 2012-Q1 to 2015-Q3 and VD4004A from 2015-Q4 onward. Mirror that exact
-  # cutoff (vd4004_split_yyyymm = 201509 in tar-config.R). The pre-2015-Q4
-  # microdata has no VD4004A column, so use VD4004; from 2015-Q4 onward use
-  # VD4004A even when VD4004 is also populated (they measure different things:
-  # efetivamente vs. habitualmente trabalhadas).
-  is_pre_split <- pnadc$Ano < 2015L | (pnadc$Ano == 2015L & pnadc$Trimestre <= 3L)
+  # cutoff via `vd4004_split_yyyymm` (single source of truth in tar-config.R).
+  # Pre-Q4-2015 microdata has no VD4004A column, so VD4004 is the only choice;
+  # from 2015-Q4 onward VD4004A is canonical (efetivamente vs. habitualmente
+  # trabalhadas — IBGE treats them as distinct indicators).
+  pnadc_yyyymm_q <- pnadc$Ano * 100L + pnadc$Trimestre * 3L  # last month of quarter
+  is_pre_split <- pnadc_yyyymm_q <= vd4004_split_yyyymm
 
   pnadc[, `:=`(
     pop14mais = 1L,

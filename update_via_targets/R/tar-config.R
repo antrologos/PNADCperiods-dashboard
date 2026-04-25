@@ -107,9 +107,13 @@ annual_required_vars <- c(
 # 0.5 * expected_median.
 # ------------------------------------------------------------------------------
 
+# Cardinality envelopes used by validate_downloaded_file().
+# `min` is informational; only `0.5 * median` is enforced. Annual visit-1
+# files for early years (2015-2017) can have ~150-250k rows, so the median
+# is calibrated conservatively to avoid quarantining valid early data.
 expected_n_rows <- list(
   quarterly = list(min = 350000L, median = 500000L, max = 700000L),
-  annual    = list(min = 250000L, median = 400000L, max = 600000L)
+  annual    = list(min = 130000L, median = 250000L, max = 600000L)
 )
 
 # ------------------------------------------------------------------------------
@@ -144,12 +148,6 @@ set_fst_threads <- function(n = 2L) {
   }
   invisible(NULL)
 }
-
-# ------------------------------------------------------------------------------
-# Minimum free-disk threshold before allowing a download (bytes)
-# ------------------------------------------------------------------------------
-
-acervo_min_free_bytes <- 5 * 1024^3  # 5 GB
 
 # ------------------------------------------------------------------------------
 # Dry-run helper: prefer environment variable so future workers inherit it.

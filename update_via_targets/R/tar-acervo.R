@@ -79,11 +79,17 @@ inventory_local <- function(dir, pattern) {
     ))
   }
   info <- file.info(paths)
+  # file.info$mtime is POSIXct in the user's local TZ; convert (not relabel)
+  # by formatting to UTC then re-parsing.
+  mtime_utc <- as.POSIXct(
+    format(info$mtime, tz = "UTC", usetz = FALSE),
+    tz = "UTC"
+  )
   data.table::data.table(
     basename = basename(paths),
     path = paths,
     size_bytes = as.numeric(info$size),
-    mtime_utc = as.POSIXct(info$mtime, tz = "UTC")
+    mtime_utc = mtime_utc
   )
 }
 
@@ -118,9 +124,6 @@ plan_acervo_actions <- function(file_type, expected, local_inventory) {
   out[, reason := NA_character_]
   out[]
 }
-
-# null-coalesce
-`%||%` <- function(x, y) if (is.null(x) || (length(x) == 1L && is.na(x))) y else x
 
 # ------------------------------------------------------------------------------
 # Atomic rename with Windows-aware semantics.

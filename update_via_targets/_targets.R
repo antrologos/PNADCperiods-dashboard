@@ -94,7 +94,16 @@ list(
   tar_target(acervo_root,           tar_acervo_root()),
   tar_target(processed_cache_dir,   tar_processed_cache_dir()),
   tar_target(dashboard_data_dir,    tar_dashboard_data_dir()),
-  tar_target(dashboard_data_dest,   resolve_dest_dir(dashboard_data_dir)),
+
+  # `dashboard_data_dest` resolves to data/ (live) or data/_new/ (staging)
+  # based on Sys.getenv("PNADC_PIPELINE_MODE"). Env vars are NOT tracked
+  # inputs; cue = always re-evaluates each tar_make() so a session-level
+  # toggle (staging -> live) propagates without manual tar_invalidate().
+  tar_target(
+    dashboard_data_dest,
+    resolve_dest_dir(dashboard_data_dir),
+    cue = tar_cue(mode = "always")
+  ),
 
   tar_target(
     utils_inequality_path,
@@ -107,6 +116,11 @@ list(
   # Idempotent: skips files that already have an identical .bak.
   # --------------------------------------------------------------------------
 
+  # T0 backup of any pre-existing live assets, idempotent via md5. Captures
+  # only the LIVE folder paths regardless of PNADC_PIPELINE_MODE — the goal
+  # is to preserve the user's existing dashboard inputs before the pipeline
+  # ever overwrites them. (Staging-mode runs write to data/_new/ and never
+  # touch the live folder, so no extra coverage is needed.)
   tar_target(
     t0_backup_targets,
     {
@@ -312,16 +326,22 @@ list(
   # Camada 2 — prepared_microdata.fst
   # --------------------------------------------------------------------------
 
+  # Path destination depends on PNADC_PIPELINE_MODE (env var, not a tracked
+  # input). Resolve via a cue=always sub-target so cutover is automatic.
+  tar_target(
+    processed_cache_dest,
+    if (Sys.getenv("PNADC_PIPELINE_MODE", "staging") == "live")
+      processed_cache_dir
+    else
+      file.path(processed_cache_dir, "_new"),
+    cue = tar_cue(mode = "always")
+  ),
+
   tar_target(
     prepared_microdata_fst,
     {
-      out_dir <- if (Sys.getenv("PNADC_PIPELINE_MODE", "staging") == "live")
-        processed_cache_dir
-      else
-        file.path(processed_cache_dir, "_new")
-      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-      dest <- file.path(out_dir, "prepared_microdata.fst")
-
+      dir.create(processed_cache_dest, recursive = TRUE, showWarnings = FALSE)
+      dest <- file.path(processed_cache_dest, "prepared_microdata.fst")
       build_prepared_microdata(
         acervo_manifest = acervo_manifest,
         deflator_path = deflator_path,

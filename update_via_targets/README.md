@@ -6,13 +6,16 @@ from the local PNADC acervo.
 
 ## Layers
 
-1. **Custody** (`R/tar-acervo.R`): inventories `D:/Dropbox/Bancos_Dados/PNADC/`,
-   detects upstream republication via IBGE FTP listing, archives + re-downloads
-   reweighted files via `PNADcIBGE`, validates downloads.
+1. **Custody** (`R/tar-acervo.R`): inventories
+   `D:/Dropbox/Bancos_Dados/PNADC/`, downloads missing files via
+   `PNADcIBGE`, validates each download (sample read + cardinality check).
+   IBGE republication (reweighting) is handled out-of-band: the user
+   removes the affected local file and runs `tar_make()` again, which
+   detects MISSING and re-downloads.
 2. **Cache** (`R/tar-microdata.R::build_prepared_microdata`): produces
    `data/processed/prepared_microdata.fst` (~161 MB, reusable across
-   dashboard + papers).
-3. **Dashboard assets** (`R/tar-microdata.R::build_*`): produces the
+   dashboard and papers).
+3. **Dashboard assets** (`R/tar-microdata.R::build_*`): produces the 8
    `.rds` consumed by the Shiny app.
 
 SIDRA assets (`*.qs2`) are NOT produced here — they come from the GitHub
@@ -41,6 +44,11 @@ PNADC_PIPELINE_MODE=staging
     4-week migration window.
   - `live`: writes directly to the live folders.
 
+The destination is resolved each `tar_make()` (cue = always on
+`dashboard_data_dest` and `processed_cache_dest`), so toggling the env
+var between sessions takes effect on the next run without
+`tar_invalidate()`.
+
 ## Common commands
 
 ```r
@@ -57,11 +65,9 @@ Sys.setenv(ACERVO_DRY_RUN = "")
 targets::tar_make()                      # serial
 targets::tar_make_future(workers = 4)    # parallel (after future setup)
 
-# Force re-check of acervo (FTP listing) without touching files
-targets::tar_invalidate(c(
-  "quarterly_remote_listing", "annual_remote_listing",
-  "quarterly_inventory", "annual_inventory"
-))
+# Force re-check of local acervo (e.g., after manually removing a file
+# IBGE has just reweighted)
+targets::tar_invalidate(c("quarterly_inventory", "annual_inventory"))
 
 # Cutover after equivalence test passes
 Sys.setenv(PNADC_PIPELINE_MODE = "live")
@@ -76,7 +82,8 @@ testthat::test_dir("tests/testthat")
 
 Six suites:
 - `test-tar-config.R`: visit rule, dry-run flag, paths
-- `test-tar-acervo.R`: file listings, IBGE filename parsing, action plan
+- `test-tar-acervo.R`: inventory_local, plan_acervo_actions OK/MISSING,
+  atomic_rename overwrite, dry-run
 - `test-tar-validation.R`: schema checks, gate behaviour
 - `test-tar-export.R`: staging-vs-live, idempotent backup
 - `test-tar-wrappers.R`: PNADCperiods wrapper signatures
@@ -88,5 +95,5 @@ Six suites:
 |----------|------|
 | Acervo already populated (~52 GB), dry-run | <1 min |
 | Acervo populated, full `tar_make()` | 30–60 min |
-| Acervo empty (worst case, 68 ZIPs to download) | 6–12 h |
+| Acervo empty (worst case, ~68 ZIPs via PNADcIBGE) | 6–12 h |
 | Incremental (1 new quarter) | 5–10 min |

@@ -110,7 +110,20 @@ validate_downloaded_file <- function(path, file_type, expected_year) {
 quarantine <- function(path, reason, n_rows = NA_integer_) {
   invalid_path <- paste0(path, ".INVALID")
   if (file.exists(path) && !acervo_is_dry_run()) {
-    suppressWarnings(file.rename(path, invalid_path))
+    # atomic_rename retries on Windows file-handle races (Dropbox / antivirus)
+    # and surfaces a clear error when the rename can't be done.
+    rename_ok <- tryCatch({
+      atomic_rename(path, invalid_path)
+      TRUE
+    }, error = function(e) {
+      message("quarantine: failed to rename ", basename(path),
+              " to .INVALID: ", conditionMessage(e))
+      FALSE
+    })
+    if (!rename_ok) {
+      reason <- paste0(reason,
+                       " [quarantine rename failed; corrupt file still in place]")
+    }
   }
   list(ok = FALSE, reason = reason, n_rows = n_rows)
 }
