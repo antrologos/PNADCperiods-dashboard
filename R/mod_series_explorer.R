@@ -327,15 +327,8 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     PNG_EXPORT_DPI <- 150
     BUTTON_REENABLE_DELAY_MS <- 60000
 
-    # Top series for de-seasonalization precompute
-    TOP_SERIES_FOR_PRECOMPUTE <- c(
-      "taxadesocup", "taxapartic", "nivelocup", "niveldesocup",
-      "taxacombdesosub", "taxacompsubutlz", "percdesalento", "perccontribprev",
-      "populacao", "pop14mais", "popnaforca", "popocup", "popdesocup", "popforadaforca",
-      "rendhabnominaltodos", "rendhabrealtodos", "rendefetnominaltodos", "rendefetrealtodos",
-      "empregado", "contapropria", "empregador",
-      "agropecuaria", "industria", "comercio", "construcao"
-    )
+    # TOP_SERIES_FOR_PRECOMPUTE is sourced from R/constants.R via global.R
+    # (single source of truth shared with .github/scripts/fetch_sidra_daily.R).
 
     # Default theme when none is selected
     DEFAULT_THEME <- "labor_market"

@@ -68,6 +68,9 @@ heading_font = font_google("Poppins")
 # Source Utility Files
 # ==============================================================================
 
+# Source shared constants (release URLs, TOP_SERIES_FOR_PRECOMPUTE)
+source("R/constants.R")
+
 # Source internationalization (i18n) system
 source("R/i18n.R")
 

@@ -1,18 +1,29 @@
 # ==============================================================================
 # Shared Constants
 # ==============================================================================
-# Constants referenced by the Shiny app and by external scripts (e.g.,
-# .github/scripts/fetch_sidra_daily.R), to avoid drift between callers.
-#
-# To use from outside the app (e.g., GitHub Actions), do:
-#   source("R/constants.R")
+# Single source of truth: sourced by global.R (Shiny app) and by external
+# scripts (e.g. .github/scripts/fetch_sidra_daily.R), to avoid drift.
 # ==============================================================================
 
+# ------------------------------------------------------------------------------
+# Release where SIDRA .qs2 assets are published by .github/workflows/sidra-daily.yml
+# ------------------------------------------------------------------------------
+RELEASE_REPO    <- "antrologos/PNADCperiods-dashboard"
+RELEASE_TAG     <- Sys.getenv("DASHBOARD_RELEASE_TAG", "data-latest")
+RELEASE_TIMEOUT_SECONDS <- 30L
+
+# Names of the four .qs2 assets the dashboard consumes (also matches keys in
+# sidra_log.json::asset_md5).
+RELEASE_QS2_FILES <- c(
+  series_metadata      = "series_metadata.qs2",
+  rolling_quarters     = "rolling_quarters.qs2",
+  monthly_sidra        = "monthly_sidra.qs2",
+  deseasonalized_cache = "deseasonalized_cache.qs2"
+)
+
+# ------------------------------------------------------------------------------
 # Top SIDRA series to pre-compute de-seasonalized variants for.
-# Kept in sync with the local definition inside seriesExplorerServer
-# (R/mod_series_explorer.R, around line 331). The module's local copy
-# will be removed in Phase 3 (dashboard refactor) once R/constants.R
-# is sourced from global.R.
+# ------------------------------------------------------------------------------
 TOP_SERIES_FOR_PRECOMPUTE <- c(
   # Rates
   "taxadesocup", "taxapartic", "nivelocup", "niveldesocup",
