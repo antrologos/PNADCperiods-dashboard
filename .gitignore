@@ -12,9 +12,10 @@
 .Rproj.user/
 *.Rproj
 
-# Large data files (regenerate with scripts/precompute_*.R)
+# Large data files (regenerate with scripts/precompute_*.R or via .github/scripts)
 data/*.rds
 data/*.fst
+data/*.qs
 
 # But keep the data directory structure
 !data/.gitkeep
@@ -47,20 +48,28 @@ desktop.ini
 temp_*.R
 nul
 
-# Test/debug scripts (keep in scripts/ but don't commit)
-test_*.R
-test_*.html
-test_*_files/
-debug_*.R
-validate_data.R
+# Local outputs from .github/scripts/test_fetch_locally.R dry-runs.
+# Real outputs are produced by GitHub Actions and uploaded to the
+# `data-latest` release; nothing here should be committed.
+output/
+
+# Test/debug scripts in scripts/ are dev-only (do not commit).
+# (Patterns are scoped so .github/scripts/test_fetch_locally.R stays tracked.)
+scripts/test_*.R
+scripts/test_*.html
+scripts/test_*_files/
+scripts/debug_*.R
+scripts/validate_data.R
 scripts/test_*.R
 scripts/debug_*.R
 scripts/fix_*.R
 scripts/verify_*.R
 
-# Test output
-tests/
+# Test output (keep tests/testthat/*.R tracked; only ignore generated bits)
 tests/testthat/_snaps/
+tests/testthat/Rplots.pdf
+tests/*.html
+tests/*.Rout
 scripts/validation_results.csv
 
 # Claude Code
