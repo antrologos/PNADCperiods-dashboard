@@ -1,21 +1,29 @@
 # =============================================================================
 # .rscignore: files NOT to upload to shinyapps.io during rsconnect::deployApp().
-# Same syntax as .gitignore. Keeps the bundle small and avoids rsconnect
-# inspecting auxiliary R scripts (which would trigger spurious dependency
-# discovery, e.g., piggyback/qs needed only by the GitHub Actions worker).
+# Same syntax as .gitignore. Trailing /** patterns are needed for some
+# rsconnect versions to recursively exclude directories.
 # =============================================================================
+
+# Credentials: must NEVER be in the bundle.
+.Renviron
+.httr-oauth
 
 # Local cache, not used by the deployed app
 data/prepared_microdata.fst
 
 # CI: workflow + helper scripts for the daily SIDRA fetch live here
-.github/
+.github
+.github/**
+.github/scripts/**
+.github/workflows/**
 
 # Phase 4 (targets) pipeline files belong to a separate runtime
-update_via_targets/
+update_via_targets
+update_via_targets/**
 
 # Local dry-run outputs from .github/scripts/test_fetch_locally.R
-output/
+output
+output/**
 
 # Dev / maintenance scripts (deploy.R is the only one the app dev needs)
 scripts/precompute_*.R
@@ -26,12 +34,23 @@ scripts/verify_*.R
 scripts/run_precompute.R
 scripts/deploy_shinyapps.R
 scripts/validation_results.csv
+scripts/test_*.html
+scripts/test_*_files
 
 # Tests live in the repo for development; not needed at runtime
-tests/
+tests
+tests/**
 
 # Project meta (kept in the repo for humans, not needed by the app)
 CLAUDE.md
 ARCHITECTURE_PLAN.md
 NEWS.md
-.claude/
+.claude
+.claude/**
+
+# R session / IDE droppings
+.Rhistory
+.RData
+.Rprofile.user
+.Rproj.user
+*.Rproj
