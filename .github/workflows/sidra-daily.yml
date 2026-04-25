@@ -37,12 +37,14 @@ jobs:
           use-public-rspm: true
 
       - name: Install R packages (extras only, no DESCRIPTION deps)
-        # Version pinning would use `pkg@x.y.z` (no spaces) — DESCRIPTION-style
-        # `pkg (>= x.y)` is rejected by pak's pkg_refs parser. Left at floats
-        # for now; tighten with `pkg@x.y.z` if a CRAN bump ever breaks the run.
+        # `packages: any::sessioninfo` overrides the action default
+        # `deps::., any::sessioninfo` and thus does NOT pull DESCRIPTION
+        # dependencies (Shiny / leaflet / sf etc.) — the worker only needs
+        # the explicit extras below. Version pinning would use `pkg@x.y.z`
+        # (no spaces); DESCRIPTION-style `pkg (>= x.y)` is not accepted.
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          dependencies: '"NA"'
+          packages: any::sessioninfo
           extra-packages: |
             any::PNADCperiods
             any::piggyback
