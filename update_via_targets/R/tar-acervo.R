@@ -43,14 +43,6 @@ list_expected_visits <- function(up_to_year) {
   out[]
 }
 
-#' Deflator XLS file (single, updated yearly by IBGE)
-list_expected_deflator <- function(up_to_year) {
-  data.table::data.table(
-    year = up_to_year - 1L,
-    basename = sprintf("deflator_pnadc_%d.xls", up_to_year - 1L)
-  )
-}
-
 # ------------------------------------------------------------------------------
 # Local inventory
 # ------------------------------------------------------------------------------
@@ -60,7 +52,7 @@ list_expected_deflator <- function(up_to_year) {
 #' @param dir character directory path
 #' @param pattern regex passed to list.files()
 #' @return data.table(basename, path, size_bytes, mtime_utc)
-inventory_local <- function(dir, pattern) {
+inventory_local <- function(dir, pattern, ignore.case = TRUE) {
   if (!dir.exists(dir)) {
     return(data.table::data.table(
       basename = character(),
@@ -69,7 +61,8 @@ inventory_local <- function(dir, pattern) {
       mtime_utc = as.POSIXct(character(), tz = "UTC")
     ))
   }
-  paths <- list.files(dir, pattern = pattern, full.names = TRUE)
+  paths <- list.files(dir, pattern = pattern, full.names = TRUE,
+                      ignore.case = ignore.case)
   if (length(paths) == 0L) {
     return(data.table::data.table(
       basename = character(),

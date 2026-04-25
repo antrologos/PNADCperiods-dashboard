@@ -71,41 +71,9 @@ t0_migration_check <- function(paths, archive_dir) {
   results
 }
 
-#' Promote staged outputs from <dest>/_new/ to live <dest>/.
-#'
-#' Atomic per-file rename. Existing live files are first moved to a
-#' timestamped backup under <archive_dir>/replaced/.
-#'
-#' Only call this AFTER tests/test-migration-equivalence.R passes.
-#'
-#' @param dest live directory
-#' @param archive_dir archive root
-promote_staged_assets <- function(dest, archive_dir) {
-  staging <- file.path(dest, "_new")
-  if (!dir.exists(staging)) {
-    message("No staging directory at ", staging, " — nothing to promote.")
-    return(invisible(character()))
-  }
-  files <- list.files(staging, full.names = TRUE)
-  if (!length(files)) {
-    message("Staging directory is empty.")
-    return(invisible(character()))
-  }
-  ts <- format(Sys.time(), "%Y-%m-%dT%H%M%SZ", tz = "UTC")
-  replaced_dir <- file.path(archive_dir, "replaced", ts)
-  dir.create(replaced_dir, recursive = TRUE, showWarnings = FALSE)
-
-  promoted <- character()
-  for (src in files) {
-    bn <- basename(src)
-    live <- file.path(dest, bn)
-    if (file.exists(live)) {
-      atomic_rename(live, file.path(replaced_dir, bn))
-    }
-    atomic_rename(src, live)
-    promoted <- c(promoted, live)
-  }
-  message(sprintf("Promoted %d files; previous versions in %s",
-                  length(promoted), replaced_dir))
-  promoted
-}
+# NOTE: an earlier prototype shipped a `promote_staged_assets()` helper that
+# manually moved files from `<dest>/_new/` to `<dest>/`. With the cue=always
+# pattern on `dashboard_data_dest` and `processed_cache_dest` in `_targets.R`,
+# cutover happens automatically: setting `PNADC_PIPELINE_MODE=live` on the
+# next `tar_make()` rebuilds Layer 3 directly at the live path. The manual
+# helper is therefore unused.

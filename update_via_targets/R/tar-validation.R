@@ -85,22 +85,27 @@ validate_downloaded_file <- function(path, file_type, expected_year) {
     }
   }
 
-  # PNADCperiods structural validation on the head sample
+  # PNADCperiods structural validation on the head sample.
+  # The package returns list(valid, issues, n_rows, n_cols, join_keys_available).
+  # Schema mismatches do NOT quarantine (PNADCperiods may be stricter than the
+  # pipeline's minimal vars list); instead, the issues are echoed to message()
+  # and surfaced via the manifest's validation_reason column when relevant.
   vchk <- tryCatch(
     PNADCperiods::validate_pnadc(head_rows, stop_on_error = FALSE),
-    error = function(e) list(valid = FALSE, errors = conditionMessage(e))
+    error = function(e) list(valid = FALSE, issues = list(error = conditionMessage(e)))
   )
-  if (isTRUE(vchk$valid) || isTRUE(vchk$ok)) {
-    # ok
-  } else if (is.list(vchk) && !is.null(vchk$errors) && !length(vchk$errors)) {
-    # treat empty errors list as ok
-  } else {
-    msg <- if (is.list(vchk) && length(vchk$errors))
-      paste(vapply(vchk$errors, function(e) as.character(e)[1L],
-                   character(1L)), collapse = "; ")
-    else "validate_pnadc returned non-ok result"
-    # don't quarantine on schema mismatch (PNADCperiods may be stricter than
-    # our minimal vars list); just log a warning.
+  if (!isTRUE(vchk$valid)) {
+    msg <- if (is.list(vchk$issues) && length(vchk$issues)) {
+      paste(
+        vapply(names(vchk$issues), function(nm) {
+          paste0(nm, "=", paste(as.character(vchk$issues[[nm]]),
+                                collapse = ","))
+        }, character(1L)),
+        collapse = "; "
+      )
+    } else {
+      "validate_pnadc returned non-ok result"
+    }
     message("validate_pnadc warning for ", basename(path), ": ", msg)
   }
 

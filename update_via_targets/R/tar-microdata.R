@@ -199,6 +199,25 @@ deflate_incomes <- function(d, deflator_path) {
                   Trimestre = as.numeric(Trimestre),
                   UF = as.numeric(UF))]
   d[, UF := as.numeric(UF)]
+
+  # Refuse to silently propagate NA when the deflator XLS doesn't cover the
+  # microdata's full (Ano, Trimestre) range. IBGE updates the deflator
+  # yearly; running the pipeline on newer microdata than the deflator
+  # covers would otherwise produce NA hhinc_pc downstream.
+  d_periods <- unique(d[, .(Ano, Trimestre)])
+  defl_periods <- unique(deflator[, .(Ano, Trimestre)])
+  uncovered <- d_periods[!defl_periods, on = .(Ano, Trimestre)]
+  if (nrow(uncovered)) {
+    stop(sprintf(
+      "Deflator file '%s' does not cover %d microdata period(s): %s. Update the deflator XLS in %s.",
+      basename(deflator_path),
+      nrow(uncovered),
+      paste(sprintf("%d-Q%d", uncovered$Ano, uncovered$Trimestre),
+            collapse = ", "),
+      dirname(deflator_path)
+    ), call. = FALSE)
+  }
+
   data.table::setkeyv(deflator, c("Ano", "Trimestre", "UF"))
   data.table::setkeyv(d, c("Ano", "Trimestre", "UF"))
   d <- deflator[d]
@@ -231,7 +250,9 @@ deflate_incomes <- function(d, deflator_path) {
 
 build_pc_income_components <- function(d) {
   d[, id_dom := paste(UPA, V1008, V1014, sep = "_")]
-  d[, n_members := .N, by = .(Ano, Trimestre, id_dom)]
+  # n_members is computed inside the household-level aggregation below
+  # (`hh[, n_members := .N, ...]`) and broadcast back via merge. No
+  # individual-level `n_members` column is needed at this point.
 
   d[, renda_trab_ha := vd4019_num * CO2 * inpc_factor]
   d[, renda_trab_ef := vd4020_num * CO2 * inpc_factor]

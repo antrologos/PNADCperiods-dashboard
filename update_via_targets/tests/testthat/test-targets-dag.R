@@ -41,7 +41,7 @@ test_that("DAG parses and contains the expected core targets", {
         # Targets that should NOT exist after Camada 1 simplification
         forbidden_targets <- c(
           "quarterly_remote_listing", "annual_remote_listing",
-          "acervo_archive_root"
+          "acervo_archive_root", "expected_deflator"
         )
         present_forbidden <- intersect(forbidden_targets, man$name)
         expect_length(present_forbidden, 0L)

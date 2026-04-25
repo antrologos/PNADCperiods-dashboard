@@ -157,10 +157,12 @@ list(
     list_expected_visits(current_year)
   ),
 
-  tar_target(
-    expected_deflator,
-    list_expected_deflator(current_year)
-  ),
+  # NOTE: the deflator XLS is updated yearly by IBGE and must be staged
+  # manually by the user (or downloaded by another process). The pipeline
+  # consumes it via `deflator_path` (a `format = "file"` target that
+  # validates presence). A separate `expected_deflator` target was
+  # previously declared but never consumed by any download path; removed
+  # to avoid suggesting an automated refresh that does not exist.
 
   tar_target(
     quarterly_inventory,
@@ -301,22 +303,25 @@ list(
     format = "file"
   ),
 
-  # Deflator file path target
+  # Deflator file path target. Filename matching is case-insensitive
+  # because IBGE ships the file as `deflator_PNADC_YYYY.xls` (capital
+  # PNADC), but the legacy code and config use lowercase in the regex.
   tar_target(
     deflator_path,
     {
       candidates <- list.files(
         acervo_subpaths(acervo_root)$deflator,
         pattern = "^deflator_pnadc_\\d{4}\\.xls$",
-        full.names = TRUE
+        full.names = TRUE,
+        ignore.case = TRUE
       )
       if (!length(candidates)) {
         stop("Deflator file not found in ",
              acervo_subpaths(acervo_root)$deflator, call. = FALSE)
       }
-      # Pick the latest year
+      # Pick the latest year (regex with ignore.case to match either case)
       yrs <- as.integer(sub(".*deflator_pnadc_(\\d{4})\\.xls", "\\1",
-                            basename(candidates)))
+                            basename(candidates), ignore.case = TRUE))
       candidates[which.max(yrs)]
     },
     format = "file"
@@ -385,13 +390,17 @@ list(
     format = "file"
   ),
 
+  # Default cue (`thorough`) suffices: rebuild only when an upstream value
+  # changes (e.g., `dashboard_data_dest` flips on staging->live cutover).
+  # Both builders are network-bound (`geobr::read_state()`,
+  # `apisidra.ibge.gov.br`), so users with intermittent connectivity should
+  # explicitly `tar_invalidate(...)` only when fresh data is desired.
   tar_target(
     brazil_states_sf_asset,
     build_brazil_states_sf(
       dest_path = file.path(dashboard_data_dest, "brazil_states_sf.rds")
     ),
-    format = "file",
-    cue = tar_cue(mode = "thorough")  # one-off; rebuild only on full clean
+    format = "file"
   ),
 
   tar_target(
@@ -399,8 +408,7 @@ list(
     build_geographic_fallback(
       dest_path = file.path(dashboard_data_dest, "geographic_data.rds")
     ),
-    format = "file",
-    cue = tar_cue(mode = "thorough")
+    format = "file"
   ),
 
   # --------------------------------------------------------------------------
@@ -470,14 +478,39 @@ list(
   tar_target(
     pipeline_done,
     {
+      n_failed  <- sum(acervo_manifest$status == "FAILED",  na.rm = TRUE)
+      n_invalid <- sum(acervo_manifest$status == "INVALID", na.rm = TRUE)
+      if (n_failed > 0L) {
+        warning(sprintf(
+          "%d acervo file(s) FAILED to download; affected periods: %s",
+          n_failed,
+          paste(acervo_manifest[status == "FAILED", basename],
+                collapse = ", ")
+        ), call. = FALSE)
+      }
+      if (n_invalid > 0L) {
+        warning(sprintf(
+          "%d acervo file(s) flagged INVALID by validate_downloaded_file: %s",
+          n_invalid,
+          paste(acervo_manifest[status == "INVALID", basename],
+                collapse = ", ")
+        ), call. = FALSE)
+      }
       list(
         ts = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-        manifest = nrow(acervo_manifest),
-        validation = vapply(dashboard_validation,
-                            function(x) isTRUE(x$ok), logical(1L)),
-        mode = Sys.getenv("PNADC_PIPELINE_MODE", "staging")
+        manifest_total = nrow(acervo_manifest),
+        n_ok         = sum(acervo_manifest$status == "OK", na.rm = TRUE),
+        n_downloaded = sum(acervo_manifest$status == "DOWNLOADED_NEW",
+                           na.rm = TRUE),
+        n_missing    = sum(acervo_manifest$status == "MISSING", na.rm = TRUE),
+        n_failed     = n_failed,
+        n_invalid    = n_invalid,
+        validation   = vapply(dashboard_validation,
+                              function(x) isTRUE(x$ok), logical(1L)),
+        mode         = Sys.getenv("PNADC_PIPELINE_MODE", "staging")
       )
-    }
+    },
+    cue = tar_cue(mode = "always")
   )
 
 )
