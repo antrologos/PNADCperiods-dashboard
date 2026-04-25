@@ -23,6 +23,8 @@ jobs:
 
     env:
       ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Cached R library; install_deps.R writes here, fetch_sidra_daily.R reads.
+      R_LIBS_USER: ${{ runner.temp }}/Library
 
     steps:
       - name: Checkout repo
@@ -36,25 +38,20 @@ jobs:
           r-version: "4.5"
           use-public-rspm: true
 
-      - name: Install R packages (extras only, no DESCRIPTION deps)
-        # `packages: sessioninfo` overrides the action default
-        # `deps::., any::sessioninfo` so DESCRIPTION is never read.
-        # Bare names (no `any::` prefix) resolve via CRAN + RSPM cleanly;
-        # pak's `any::` prefix tripped over `qs` resolution on noble binary.
-        uses: r-lib/actions/setup-r-dependencies@v2
+      - name: Cache R library
+        uses: actions/cache@v4
         with:
-          packages: sessioninfo
-          extra-packages: |
-            PNADCperiods
-            piggyback
-            qs
-            jsonlite
-            data.table
-            seasonal
-            forecast
-            httr2
-            x13binary
-          cache-version: 1
+          path: ${{ runner.temp }}/Library
+          key: ${{ runner.os }}-r-4.5-noble-pkgs-v3
+          restore-keys: ${{ runner.os }}-r-4.5-noble-pkgs-
+
+      - name: Install R packages (direct, bypassing setup-r-dependencies)
+        # setup-r-dependencies kept failing with `dependency conflict`
+        # against the noble binary repo for our particular extras; this
+        # bypass installs them directly from RSPM and caches the lib.
+        run: |
+          mkdir -p "$R_LIBS_USER"
+          Rscript .github/scripts/install_deps.R
 
       - name: Rotate data-latest -> data-prev (only if previous run was healthy)
         # Pulls the previous run's sidra_log.json, refuses to rotate if
