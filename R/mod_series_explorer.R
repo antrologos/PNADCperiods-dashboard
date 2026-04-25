@@ -988,11 +988,21 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     # --------------------------------------------------------------------------
 
     output$last_updated <- renderText({
-      if (!is.null(shared_data$last_updated)) {
-        format(shared_data$last_updated, "%Y-%m-%d %H:%M")
-      } else {
-        i18n("messages.not_available", get_lang())
+      lang_val <- get_lang()
+      parts <- character(0)
+      if (!is.null(shared_data$sidra_latest_ref_month) &&
+          nchar(shared_data$sidra_latest_ref_month) >= 6L) {
+        ym <- shared_data$sidra_latest_ref_month
+        pretty <- paste0(substr(ym, 1L, 4L), "-", substr(ym, 5L, 6L))
+        parts <- c(parts, sprintf(i18n("messages.data_through", lang_val), pretty))
       }
+      if (!is.null(shared_data$sidra_fetched_at)) {
+        ts <- format(shared_data$sidra_fetched_at, "%Y-%m-%d %H:%M", tz = "UTC")
+        parts <- c(parts, sprintf(i18n("messages.fetched_at", lang_val),
+                                  paste0(ts, " UTC")))
+      }
+      if (length(parts) == 0L) i18n("messages.not_available", lang_val)
+      else paste(parts, collapse = " · ")
     })
 
     # --------------------------------------------------------------------------
@@ -1889,157 +1899,81 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
 
       withProgress(message = i18n("messages.checking_new_data", lang_val), value = 0, {
         tryCatch({
-          incProgress(0.1, detail = i18n("messages.querying_api", lang_val))
+          incProgress(0.2, detail = i18n("messages.fetching", lang_val))
 
-          # Check if PNADCperiods package is available (use variable to avoid packrat detection)
-          pkg_name <- "PNADCperiods"
-          if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            showNotification(
-              sprintf(i18n("messages.package_unavailable", lang_val), pkg_name),
-              type = "error"
+          # Re-download all SIDRA assets from the GitHub release `data-latest`.
+          # No fallback — if the user explicitly clicked "refresh" and the
+          # release is unreachable, surface the failure rather than silently
+          # keeping the previous in-memory data.
+          new_results <- list()
+          for (slot in names(RELEASE_QS2_FILES)) {
+            fname <- RELEASE_QS2_FILES[[slot]]
+            new_results[[slot]] <- fetch_sidra_qs_from_release(
+              fname, fallback_path = NULL
             )
-            # Re-enable button before early return
-            if (shinyjs_ok) {
-              shinyjs::enable("refresh_sidra")
-            }
+          }
+          new_log <- fetch_sidra_log_from_release()
+
+          if (any(vapply(new_results, function(r) is.null(r$data), logical(1)))) {
+            showNotification(i18n("messages.error_fetch", lang_val), type = "error")
+            if (shinyjs_ok) shinyjs::enable("refresh_sidra")
             return()
           }
 
-          # First, check if there's actually new data available
-          # Get current latest date from our data
-          current_max_date <- NULL
-          if (!is.null(shared_data$rolling_quarters)) {
-            current_max_date <- max(shared_data$rolling_quarters$anomesfinaltrimmovel, na.rm = TRUE)
-          }
+          new_rq      <- new_results$rolling_quarters$data
+          new_monthly <- new_results$monthly_sidra$data
 
-          # Fetch new rolling quarters data
-          # Progress: 0.1 + 0.15 = 0.25 total
-          incProgress(0.15, detail = i18n("messages.fetching", lang_val))
-          fetch_fn <- getFromNamespace("fetch_sidra_rolling_quarters", pkg_name)
-          new_rq <- fetch_fn(verbose = FALSE)
-
-          # Check if there's new data
+          # Compare against current in-memory vintage
+          current_max_date <- if (!is.null(shared_data$rolling_quarters))
+            max(shared_data$rolling_quarters$anomesfinaltrimmovel, na.rm = TRUE) else NULL
           new_max_date <- max(new_rq$anomesfinaltrimmovel, na.rm = TRUE)
 
           if (!is.null(current_max_date) && new_max_date <= current_max_date) {
-            # No new data available
             latest_formatted <- paste0(substr(current_max_date, 1, 4), "-",
-                                        substr(current_max_date, 5, 6))
+                                       substr(current_max_date, 5, 6))
             showNotification(
               sprintf(i18n("messages.no_new_data_detail", lang_val), latest_formatted),
-              type = "message",
-              duration = 5
+              type = "message", duration = 5
             )
-            # Re-enable button
-            if (shinyjs_ok) {
-              shinyjs::enable("refresh_sidra")
-            }
+            if (shinyjs_ok) shinyjs::enable("refresh_sidra")
             return()
           }
 
-          # New data found - proceed with full refresh
-          n_new_periods <- if (!is.null(current_max_date)) {
-            sum(new_rq$anomesfinaltrimmovel > current_max_date)
-          } else {
-            nrow(new_rq)
-          }
+          n_new_periods <- if (!is.null(current_max_date))
+            sum(new_rq$anomesfinaltrimmovel > current_max_date) else nrow(new_rq)
 
-          # Progress: 0.25 + 0.15 = 0.4 total
-          incProgress(0.15, detail = sprintf(i18n("messages.found_new_periods", lang_val),
-                                            n_new_periods))
-          mensalize_fn <- getFromNamespace("mensalize_sidra_series", pkg_name)
-          new_monthly <- mensalize_fn(new_rq, verbose = FALSE)
+          incProgress(0.6, detail = i18n("messages.saving_data", lang_val))
 
-          # Update shared data
-          shared_data$rolling_quarters <- new_rq
-          shared_data$monthly_sidra <- new_monthly
-          shared_data$last_updated <- Sys.time()
-
-          # Save to disk (with directory check)
-          # Use app directory for reliable path resolution
-          data_dir <- file.path(getShinyOption("appDir", getwd()), "data")
-          if (dir.exists(data_dir)) {
-            saveRDS(new_rq, file.path(data_dir, "rolling_quarters.rds"))
-            saveRDS(new_monthly, file.path(data_dir, "monthly_sidra.rds"))
-          } else {
-            # Notify user, not just console warning
-            showNotification(
-              i18n("messages.data_dir_not_found", lang_val),
-              type = "warning",
-              duration = 5
+          # Update shared_data atomically with the new vintage
+          shared_data$rolling_quarters       <- new_rq
+          shared_data$monthly_sidra          <- new_monthly
+          shared_data$series_metadata        <- new_results$series_metadata$data
+          shared_data$deseasonalized_cache   <- new_results$deseasonalized_cache$data
+          shared_data$sidra_source           <- "release"
+          shared_data$sidra_log              <- new_log
+          shared_data$sidra_fetched_at       <- if (!is.null(new_log) &&
+                                                    !is.null(new_log[["fetched_at"]])) {
+            tryCatch(
+              as.POSIXct(new_log[["fetched_at"]],
+                         format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+              error = function(e) Sys.time()
             )
-          }
+          } else Sys.time()
+          shared_data$sidra_latest_ref_month <- if (!is.null(new_log))
+            new_log[["latest_ref_month"]] else NULL
+          shared_data$last_updated           <- shared_data$sidra_fetched_at
 
-          # Recompute de-seasonalized series for top series
-          # Progress: 0.4 + 0.4 = 0.8 total
-          incProgress(0.4, detail = i18n("messages.updating_seasonal", lang_val))
-
-          deseason_available <- check_deseasonalization_available()
-          if (deseason_available["x13"] || deseason_available["stl"]) {
-
-            # Get dates from monthly data
-            dates <- as.Date(paste0(substr(new_monthly$anomesexato, 1, 4), "-",
-                                    substr(new_monthly$anomesexato, 5, 6), "-15"))
-
-            # Use constant for top series to precompute
-            new_cache <- list()
-            for (series_name in TOP_SERIES_FOR_PRECOMPUTE) {
-              monthly_col <- resolve_monthly_column(new_monthly, series_name)
-
-              if (!is.null(monthly_col)) {
-                values <- new_monthly[[monthly_col]]
-
-                tryCatch({
-                  result <- list(
-                    series_name = series_name,
-                    original = values
-                  )
-
-                  if (deseason_available["x13"]) {
-                    result$x13 <- deseasonalize_x13(values, dates)
-                  }
-                  if (deseason_available["stl"]) {
-                    result$stl <- deseasonalize_stl(values, dates)
-                  }
-
-                  new_cache[[series_name]] <- result
-                }, error = function(e) {
-                  # Log error but continue with other series
-                  message("De-seasonalization failed for ", series_name, ": ", e$message)
-                })
-              }
-            }
-
-            # Update and save de-seasonalized cache
-            if (length(new_cache) > 0) {
-              shared_data$deseasonalized_cache <- new_cache
-              if (dir.exists(data_dir)) {
-                saveRDS(new_cache, file.path(data_dir, "deseasonalized_cache.rds"))
-              }
-            }
-          }
-
-          # Progress: 0.8 + 0.2 = 1.0 total (complete)
-          incProgress(0.2, detail = i18n("messages.saving_data", lang_val))
           showNotification(
             sprintf(i18n("messages.data_updated_detail", lang_val), n_new_periods),
             type = "message"
           )
 
-          # Re-enable button immediately on success
-          if (shinyjs_ok) {
-            shinyjs::enable("refresh_sidra")
-          }
+          if (shinyjs_ok) shinyjs::enable("refresh_sidra")
 
         }, error = function(e) {
-          # Log detailed error for debugging
-          message("SIDRA refresh error: ", e$message)
-          # Show generic message to user (lang_val captured before tryCatch)
+          message("SIDRA refresh error: ", conditionMessage(e))
           showNotification(i18n("messages.error_generic", lang_val), type = "error")
-          # Re-enable button on error
-          if (shinyjs_ok) {
-            shinyjs::enable("refresh_sidra")
-          }
+          if (shinyjs_ok) shinyjs::enable("refresh_sidra")
         })
       })
 

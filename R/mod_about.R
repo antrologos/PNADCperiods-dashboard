@@ -216,11 +216,26 @@ aboutServer <- function(id, shared_data, lang = reactive("pt")) {
     # --------------------------------------------------------------------------
 
     output$sidra_freshness <- renderText({
-      if (!is.null(shared_data$last_updated)) {
-        format(shared_data$last_updated, "%Y-%m-%d %H:%M")
-      } else {
-        i18n("about.not_available_refresh", get_lang())
+      lang_val <- get_lang()
+      parts <- character(0)
+      if (!is.null(shared_data$sidra_latest_ref_month) &&
+          nchar(shared_data$sidra_latest_ref_month) >= 6L) {
+        ym <- shared_data$sidra_latest_ref_month
+        pretty <- paste0(substr(ym, 1L, 4L), "-", substr(ym, 5L, 6L))
+        parts <- c(parts, sprintf(i18n("messages.data_through", lang_val), pretty))
       }
+      if (!is.null(shared_data$sidra_fetched_at)) {
+        ts <- format(shared_data$sidra_fetched_at, "%Y-%m-%d %H:%M", tz = "UTC")
+        parts <- c(parts, sprintf(i18n("messages.fetched_at", lang_val),
+                                  paste0(ts, " UTC")))
+      }
+      if (!is.null(shared_data$sidra_source)) {
+        src_key <- if (identical(shared_data$sidra_source, "release"))
+          "messages.data_source_release" else "messages.data_source_bundled"
+        parts <- c(parts, i18n(src_key, lang_val))
+      }
+      if (length(parts) == 0L) i18n("about.not_available_refresh", lang_val)
+      else paste(parts, collapse = " · ")
     })
 
   })

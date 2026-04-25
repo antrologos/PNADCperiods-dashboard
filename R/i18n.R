@@ -206,6 +206,20 @@ translations <- list(
     data_dir_not_found = list(en = "Data directory not found. Changes saved to memory only.", pt = "Diretório de dados não encontrado. Alterações salvas apenas na memória."),
     excel_fallback_csv = list(en = "Excel package not available. Downloaded as CSV instead.", pt = "Pacote Excel não disponível. Baixado como CSV."),
     last_updated = list(en = "Last updated", pt = "Última atualização"),
+    data_through = list(en = "Data through %s", pt = "Dados até %s"),
+    fetched_at = list(en = "Fetched at %s", pt = "Atualizado em %s"),
+    data_source_release = list(
+      en = "Source: GitHub release (data-latest)",
+      pt = "Fonte: release do GitHub (data-latest)"
+    ),
+    data_source_bundled = list(
+      en = "Source: bundled snapshot",
+      pt = "Fonte: snapshot embutido"
+    ),
+    refresh_from_release = list(
+      en = "Refreshed from release. %s",
+      pt = "Recarregado da release. %s"
+    ),
     select_series = list(en = "Please select a series", pt = "Por favor, selecione uma série"),
     no_data = list(en = "No data available", pt = "Dados não disponíveis"),
     no_data_range = list(
