@@ -102,6 +102,80 @@ make_lazy_loader <- function(path) {
   }
 }
 
+# ----------------------------------------------------------------------------
+# SIDRA bundle: fetch one .qs2 asset from the GitHub release `data-latest`,
+# falling back to the bundled file if the network is unavailable or the
+# release hasn't been populated yet. Used in load_app_data() at startup.
+# ----------------------------------------------------------------------------
+fetch_sidra_qs_from_release <- function(filename, fallback_path,
+                                        repo = RELEASE_REPO,
+                                        tag = RELEASE_TAG,
+                                        timeout = RELEASE_TIMEOUT_SECONDS) {
+  url <- sprintf("https://github.com/%s/releases/download/%s/%s",
+                 repo, tag, filename)
+  result <- list(data = NULL, source = "bundled",
+                 fetched_at = NULL, url = url)
+
+  ok <- tryCatch({
+    tmp <- tempfile(fileext = ".qs2")
+    on.exit(try(unlink(tmp), silent = TRUE), add = TRUE)
+    resp <- httr2::request(url) |>
+      httr2::req_timeout(timeout) |>
+      httr2::req_retry(max_tries = 2, backoff = ~ 2) |>
+      httr2::req_user_agent("PNADCperiods-dashboard") |>
+      httr2::req_error(is_error = function(r) FALSE) |>
+      httr2::req_perform(path = tmp)
+    if (httr2::resp_status(resp) == 200L &&
+        file.exists(tmp) && file.size(tmp) > 0L) {
+      result$data       <- qs2::qs_read(tmp)
+      result$source     <- "release"
+      result$fetched_at <- Sys.time()
+      TRUE
+    } else FALSE
+  }, error = function(e) {
+    message("Release fetch failed for ", filename, ": ", conditionMessage(e))
+    FALSE
+  })
+
+  if (!ok && !is.null(fallback_path) && file.exists(fallback_path)) {
+    fb <- tryCatch({
+      if (grepl("\\.qs2$", fallback_path)) qs2::qs_read(fallback_path)
+      else readRDS(fallback_path)
+    }, error = function(e) {
+      message("Bundled fallback for ", filename, " is corrupted: ",
+              conditionMessage(e))
+      NULL
+    })
+    if (!is.null(fb)) {
+      result$data       <- fb
+      result$source     <- "bundled"
+      result$fetched_at <- file.mtime(fallback_path)
+    }
+  }
+  result
+}
+
+# Read sidra_log.json from the release. Returns NULL if unavailable.
+# All field accesses elsewhere should be defensive (`log[["x"]] %||% default`).
+fetch_sidra_log_from_release <- function(repo = RELEASE_REPO,
+                                         tag = RELEASE_TAG,
+                                         timeout = RELEASE_TIMEOUT_SECONDS) {
+  url <- sprintf("https://github.com/%s/releases/download/%s/sidra_log.json",
+                 repo, tag)
+  tryCatch({
+    resp <- httr2::request(url) |>
+      httr2::req_timeout(timeout) |>
+      httr2::req_user_agent("PNADCperiods-dashboard") |>
+      httr2::req_error(is_error = function(r) FALSE) |>
+      httr2::req_perform()
+    if (httr2::resp_status(resp) == 200L) {
+      jsonlite::fromJSON(httr2::resp_body_string(resp), simplifyVector = TRUE)
+    } else NULL
+  }, error = function(e) {
+    message("sidra_log fetch failed: ", conditionMessage(e)); NULL
+  })
+}
+
 # Load precomputed data (if available)
 # Small/always-needed files are loaded eagerly; large tab-specific files use lazy loaders
 load_app_data <- function() {
@@ -113,31 +187,52 @@ load_app_data <- function() {
     rolling_quarters = NULL,
     series_metadata = NULL,
     deseasonalized_cache = NULL,
-    last_updated = NULL
+    last_updated = NULL,
+    # SIDRA release provenance
+    sidra_source = NULL,
+    sidra_fetched_at = NULL,
+    sidra_latest_ref_month = NULL,
+    sidra_log = NULL
   )
 
-  # --- Eager loads (always needed, ~160 KB total) ---
+  # --- Eager loads (SIDRA: prefer GitHub release, fall back to bundled .qs2/.rds) ---
 
-  metadata_path <- file.path(data_dir, "series_metadata.rds")
-  if (file.exists(metadata_path)) {
-    app_data$series_metadata <- readRDS(metadata_path)
+  sources       <- character(0)
+  fetched_times <- as.POSIXct(character(0))
+  for (slot in names(RELEASE_QS2_FILES)) {
+    fname  <- RELEASE_QS2_FILES[[slot]]
+    fb_qs2 <- file.path(data_dir, fname)
+    fb_rds <- file.path(data_dir, sub("\\.qs2$", ".rds", fname))
+    fallback <- if (file.exists(fb_qs2)) fb_qs2 else fb_rds
+    res <- fetch_sidra_qs_from_release(fname, fallback_path = fallback)
+    app_data[[slot]] <- res$data
+    sources <- c(sources, res$source)
+    if (!is.null(res$fetched_at)) {
+      fetched_times <- c(fetched_times, res$fetched_at)
+    }
   }
 
-  monthly_path <- file.path(data_dir, "monthly_sidra.rds")
-  if (file.exists(monthly_path)) {
-    app_data$monthly_sidra <- readRDS(monthly_path)
-    app_data$last_updated <- file.mtime(monthly_path)
+  # Read provenance from the log JSON (defensive: any field can be missing).
+  log <- fetch_sidra_log_from_release()
+  app_data$sidra_log <- log
+  if (!is.null(log)) {
+    if (!is.null(log[["latest_ref_month"]])) {
+      app_data$sidra_latest_ref_month <- log[["latest_ref_month"]]
+    }
+    if (!is.null(log[["fetched_at"]])) {
+      app_data$sidra_fetched_at <- tryCatch(
+        as.POSIXct(log[["fetched_at"]],
+                   format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+        error = function(e) NULL
+      )
+    }
   }
-
-  rolling_path <- file.path(data_dir, "rolling_quarters.rds")
-  if (file.exists(rolling_path)) {
-    app_data$rolling_quarters <- readRDS(rolling_path)
+  if (is.null(app_data$sidra_fetched_at) && length(fetched_times) > 0L) {
+    app_data$sidra_fetched_at <- max(fetched_times, na.rm = TRUE)
   }
-
-  deseason_path <- file.path(data_dir, "deseasonalized_cache.rds")
-  if (file.exists(deseason_path)) {
-    app_data$deseasonalized_cache <- readRDS(deseason_path)
-  }
+  app_data$sidra_source <- if (any(sources == "release")) "release" else "bundled"
+  # Legacy alias: many places still read `last_updated`
+  app_data$last_updated <- app_data$sidra_fetched_at
 
   # --- Lazy loads (tab-specific, loaded on first visit) ---
 

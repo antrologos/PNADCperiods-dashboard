@@ -239,6 +239,11 @@ server <- function(input, output, session) {
     series_metadata = app_data$series_metadata,
     deseasonalized_cache = app_data$deseasonalized_cache,
     last_updated = app_data$last_updated,
+    # SIDRA release provenance (Phase 3 / Deploy C)
+    sidra_source = app_data$sidra_source,
+    sidra_fetched_at = app_data$sidra_fetched_at,
+    sidra_latest_ref_month = app_data$sidra_latest_ref_month,
+    sidra_log = app_data$sidra_log,
     # Lazy loaders (load on first tab visit, then cached)
     geo_last_updated = app_data$geo_last_updated,
     get_geographic_data = app_data$get_geographic_data,
