@@ -81,13 +81,13 @@ jobs:
             echo "Refusing to rotate a non-healthy release."
             exit 0
           fi
-          # 2. Healthy: pull all .qs and rotate.
+          # 2. Healthy: pull all .qs2 and rotate.
           gh release download data-latest \
             --repo "$GITHUB_REPOSITORY" \
             --dir prev_assets \
-            --pattern "*.qs" --clobber
-          if [ -z "$(ls prev_assets/*.qs 2>/dev/null)" ]; then
-            echo "No .qs assets in previous release; nothing to rotate."
+            --pattern "*.qs2" --clobber
+          if [ -z "$(ls prev_assets/*.qs2 2>/dev/null)" ]; then
+            echo "No .qs2 assets in previous release; nothing to rotate."
             exit 0
           fi
           if ! gh release view data-prev --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -146,8 +146,8 @@ jobs:
             --prerelease \
             --title "SIDRA snapshot $week_tag" \
             --notes "Auto-snapshot by sidra-daily.yml on $(date -u +%Y-%m-%d). Immutable."
-          for f in output/series_metadata.qs output/rolling_quarters.qs \
-                   output/monthly_sidra.qs output/deseasonalized_cache.qs \
+          for f in output/series_metadata.qs2 output/rolling_quarters.qs2 \
+                   output/monthly_sidra.qs2 output/deseasonalized_cache.qs2 \
                    output/sidra_log.json; do
             if [ -f "$f" ]; then
               gh release upload "$week_tag" "$f" --repo "$GITHUB_REPOSITORY"

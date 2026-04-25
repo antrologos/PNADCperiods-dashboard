@@ -15,7 +15,7 @@
 # Large data files (regenerate with scripts/precompute_*.R or via .github/scripts)
 data/*.rds
 data/*.fst
-data/*.qs
+data/*.qs2
 
 # But keep the data directory structure
 !data/.gitkeep

@@ -5,10 +5,10 @@
 #   - SIDRA API (public, no auth)
 #   - PNADCperiods (CRAN >= 0.1.1)
 # Outputs (written to ./output/):
-#   - series_metadata.qs
-#   - rolling_quarters.qs
-#   - monthly_sidra.qs
-#   - deseasonalized_cache.qs
+#   - series_metadata.qs2
+#   - rolling_quarters.qs2
+#   - monthly_sidra.qs2
+#   - deseasonalized_cache.qs2
 #   - sidra_log.json   (always, even on failure; uploaded LAST)
 # Side effect:
 #   - Uploads the 5 files to release `data-latest` of $GITHUB_REPOSITORY,
@@ -24,7 +24,7 @@
 suppressPackageStartupMessages({
   library(PNADCperiods)
   library(piggyback)
-  library(qs)
+  library(qs2)            # CRAN successor of `qs`; same security profile
   library(jsonlite)
   library(data.table)
   library(httr2)
@@ -125,7 +125,7 @@ tryCatch({
   # ---- Step 1: metadata ----
   cat("Step 1: get_sidra_series_metadata()\n")
   metadata <- with_retry(function() get_sidra_series_metadata(), "metadata")
-  qs::qsave(metadata, file.path(OUTDIR, "series_metadata.qs"))
+  qs2::qs_save(metadata, file.path(OUTDIR, "series_metadata.qs2"))
 
   # ---- Step 2: rolling quarters ----
   cat("Step 2: fetch_sidra_rolling_quarters() (may take a few minutes)\n")
@@ -136,7 +136,7 @@ tryCatch({
   if (is.null(rolling_quarters) || nrow(rolling_quarters) == 0L) {
     stop("[fetch_rq] returned empty data.table")
   }
-  qs::qsave(rolling_quarters, file.path(OUTDIR, "rolling_quarters.qs"))
+  qs2::qs_save(rolling_quarters, file.path(OUTDIR, "rolling_quarters.qs2"))
 
   # ---- Step 3: mensalize ----
   cat("Step 3: mensalize_sidra_series()\n")
@@ -147,7 +147,7 @@ tryCatch({
   if (is.null(monthly_sidra) || nrow(monthly_sidra) == 0L) {
     stop("[mensalize] returned empty data.table")
   }
-  qs::qsave(monthly_sidra, file.path(OUTDIR, "monthly_sidra.qs"))
+  qs2::qs_save(monthly_sidra, file.path(OUTDIR, "monthly_sidra.qs2"))
 
   # Vintage info (now safe: rolling_quarters and monthly_sidra are non-empty)
   runlog$latest_ref_month <- as.character(max(rolling_quarters$anomesfinaltrimmovel,
@@ -192,7 +192,7 @@ tryCatch({
     }
   }
 
-  qs::qsave(deseasonalized_cache, file.path(OUTDIR, "deseasonalized_cache.qs"))
+  qs2::qs_save(deseasonalized_cache, file.path(OUTDIR, "deseasonalized_cache.qs2"))
 
   # ---- Step 5: IBGE FTP probe ----
   cat("Step 5: HEAD probe on IBGE FTP\n")
@@ -246,9 +246,9 @@ tryCatch({
     "failed"
   }
 
-  # ---- Step 8: hashes of .qs files for integrity verification ----
-  qs_files <- c("series_metadata.qs", "rolling_quarters.qs",
-                "monthly_sidra.qs", "deseasonalized_cache.qs")
+  # ---- Step 8: hashes of .qs2 files for integrity verification ----
+  qs_files <- c("series_metadata.qs2", "rolling_quarters.qs2",
+                "monthly_sidra.qs2", "deseasonalized_cache.qs2")
   runlog$asset_md5 <- as.list(setNames(
     unname(tools::md5sum(file.path(OUTDIR, qs_files))),
     qs_files
@@ -261,7 +261,7 @@ tryCatch({
   upload_status <- "skipped"
   if (DO_UPLOAD && runlog$status != "failed") {
     cat("Step 9: pb_upload to", REPO, "tag=", TAG, "\n")
-    # .qs first, then sidra_log.json LAST so a partial-upload leaves the
+    # .qs2 first, then sidra_log.json LAST so a partial-upload leaves the
     # log pointing to the previous run (consumers should trust the log
     # only when all assets it references match by md5).
     for (f in qs_files) {

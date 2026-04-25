@@ -46,10 +46,10 @@ if (!is.null(fetch_err)) {
   cat("(Continuing to verify whatever was written before the error.)\n\n")
 }
 expected_outputs <- c(
-  "output/series_metadata.qs",
-  "output/rolling_quarters.qs",
-  "output/monthly_sidra.qs",
-  "output/deseasonalized_cache.qs",
+  "output/series_metadata.qs2",
+  "output/rolling_quarters.qs2",
+  "output/monthly_sidra.qs2",
+  "output/deseasonalized_cache.qs2",
   "output/sidra_log.json"
 )
 missing_outputs <- character()
