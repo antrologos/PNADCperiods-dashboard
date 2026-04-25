@@ -37,24 +37,23 @@ jobs:
           use-public-rspm: true
 
       - name: Install R packages (extras only, no DESCRIPTION deps)
-        # `packages: any::sessioninfo` overrides the action default
-        # `deps::., any::sessioninfo` and thus does NOT pull DESCRIPTION
-        # dependencies (Shiny / leaflet / sf etc.) — the worker only needs
-        # the explicit extras below. Version pinning would use `pkg@x.y.z`
-        # (no spaces); DESCRIPTION-style `pkg (>= x.y)` is not accepted.
+        # `packages: sessioninfo` overrides the action default
+        # `deps::., any::sessioninfo` so DESCRIPTION is never read.
+        # Bare names (no `any::` prefix) resolve via CRAN + RSPM cleanly;
+        # pak's `any::` prefix tripped over `qs` resolution on noble binary.
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          packages: any::sessioninfo
+          packages: sessioninfo
           extra-packages: |
-            any::PNADCperiods
-            any::piggyback
-            any::qs
-            any::jsonlite
-            any::data.table
-            any::seasonal
-            any::forecast
-            any::httr2
-            any::x13binary
+            PNADCperiods
+            piggyback
+            qs
+            jsonlite
+            data.table
+            seasonal
+            forecast
+            httr2
+            x13binary
           cache-version: 1
 
       - name: Rotate data-latest -> data-prev (only if previous run was healthy)
