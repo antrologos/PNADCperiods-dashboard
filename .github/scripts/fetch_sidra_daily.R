@@ -23,12 +23,15 @@
 
 suppressPackageStartupMessages({
   library(PNADCperiods)
-  library(piggyback)
   library(qs2)            # CRAN successor of `qs`; same security profile
   library(jsonlite)
   library(data.table)
   library(httr2)
 })
+# Note: uploads are done via the `gh` CLI (system2()), not piggyback,
+# because piggyback::pb_upload 0.1.5 chokes on empty releases.
+# `piggyback` is still installed via install_deps.R for the dashboard's
+# Phase 3 use of pb_download() at startup.
 
 # Source helpers from the dashboard repo (working dir = repo root).
 source("R/constants.R")
@@ -258,24 +261,32 @@ tryCatch({
   write_log()
 
   # ---- Step 9: upload (skip if dry-run or status=failed) ----
+  # Uses `gh release upload --clobber` instead of piggyback::pb_upload
+  # because piggyback 0.1.5 (CRAN) chokes on an empty release with
+  # "values must be length 1, but FUN(X[[1]]) result is length 0".
   upload_status <- "skipped"
+  gh_upload <- function(file, label) {
+    rc <- system2(
+      "gh",
+      args = c("release", "upload", TAG,
+               shQuote(file.path(OUTDIR, file)),
+               "--repo", REPO, "--clobber"),
+      stdout = "", stderr = ""
+    )
+    if (rc != 0L) stop(sprintf("[%s] gh release upload failed (rc=%d)", label, rc))
+    invisible(rc)
+  }
   if (DO_UPLOAD && runlog$status != "failed") {
-    cat("Step 9: pb_upload to", REPO, "tag=", TAG, "\n")
+    cat("Step 9: gh release upload to", REPO, "tag=", TAG, "\n")
     # .qs2 first, then sidra_log.json LAST so a partial-upload leaves the
     # log pointing to the previous run (consumers should trust the log
     # only when all assets it references match by md5).
     for (f in qs_files) {
-      with_retry(
-        function() pb_upload(file.path(OUTDIR, f), repo = REPO, tag = TAG,
-                             overwrite = TRUE),
-        paste0("upload:", f)
-      )
+      with_retry(function() gh_upload(f, paste0("upload:", f)),
+                 paste0("upload:", f))
     }
-    with_retry(
-      function() pb_upload(file.path(OUTDIR, "sidra_log.json"),
-                           repo = REPO, tag = TAG, overwrite = TRUE),
-      "upload:sidra_log.json"
-    )
+    with_retry(function() gh_upload("sidra_log.json", "upload:sidra_log.json"),
+               "upload:sidra_log.json")
     upload_status <- "uploaded"
   } else if (!DO_UPLOAD) {
     cat("Step 9: SKIPPED (FETCH_SIDRA_DRY_RUN=1)\n")
