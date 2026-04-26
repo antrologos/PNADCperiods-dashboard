@@ -11,3 +11,8 @@ _targets.yaml
 
 # staging outputs (pre-cutover)
 data/_new/
+
+# Phase 5 equivalence reports (regenerated; not git-tracked)
+scripts/phase5_report.md
+scripts/phase5_report.csv
+scripts/phase5_report.json

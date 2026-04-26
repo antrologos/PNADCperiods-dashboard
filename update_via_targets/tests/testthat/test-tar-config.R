@@ -25,10 +25,12 @@ test_that("acervo_is_dry_run honours env var first, option fallback", {
   })
 })
 
-test_that("acervo_subpaths returns four named entries", {
+test_that("acervo_subpaths returns the expected named entries", {
   source_pipeline_R()
   sp <- acervo_subpaths("/tmp/PNADC")
-  expect_named(sp, c("quarterly", "annual", "deflator", "suplements"))
+  expect_named(sp, c("quarterly", "annual", "deflator",
+                     "quarterly_deflator", "suplements"))
   expect_match(sp$quarterly, "Trimestral/Dados$")
   expect_match(sp$annual, "Anual/visitas$")
+  expect_match(sp$quarterly_deflator, "Trimestral/Documentacao$")
 })

@@ -48,10 +48,11 @@ tar_processed_cache_dir <- function() {
 
 acervo_subpaths <- function(base = tar_acervo_root()) {
   list(
-    quarterly  = file.path(base, "Trimestral", "Dados"),
-    annual     = file.path(base, "Anual", "visitas"),
-    deflator   = file.path(base, "Anual", "visitas", "documentacao"),
-    suplements = file.path(base, "Anual", "Trimestres")  # out of MVP scope
+    quarterly          = file.path(base, "Trimestral", "Dados"),
+    annual             = file.path(base, "Anual", "visitas"),
+    deflator           = file.path(base, "Anual", "visitas", "documentacao"),
+    quarterly_deflator = file.path(base, "Trimestral", "Documentacao"),
+    suplements         = file.path(base, "Anual", "Trimestres")  # out of MVP scope
   )
 }
 
@@ -121,6 +122,23 @@ expected_n_rows <- list(
 # ------------------------------------------------------------------------------
 
 deflation_target_date <- "12/2025"
+
+#' Validate deflation_target_date format.
+#'
+#' Format expected by `deflateBR::inpc(real_date = ...)` is "MM/YYYY".
+#' Caller validates the constant once at pipeline startup so a typo doesn't
+#' produce silent NaN factors deep inside the build.
+#'
+#' @param s character of length 1
+#' @return invisible(s) on success; throws otherwise.
+validate_deflation_target_date <- function(s) {
+  if (!is.character(s) || length(s) != 1L)
+    stop("deflation_target_date must be a single character", call. = FALSE)
+  if (!grepl("^(0[1-9]|1[0-2])/\\d{4}$", s))
+    stop(sprintf("deflation_target_date '%s' is not in MM/YYYY format", s),
+         call. = FALSE)
+  invisible(s)
+}
 
 # ------------------------------------------------------------------------------
 # VD4004 / VD4004A boundary

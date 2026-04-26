@@ -36,5 +36,8 @@ tar_pipeline_packages <- c(
   "rmapshaper",
 
   # HTTP for FTP listings
-  "httr2"
+  "httr2",
+
+  # Deploy (dashboard_deployed target)
+  "rsconnect"
 )

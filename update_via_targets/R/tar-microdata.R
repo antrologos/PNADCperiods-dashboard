@@ -22,87 +22,22 @@
 #   9. Write to data/processed/prepared_microdata.fst
 # ------------------------------------------------------------------------------
 
-#' Build prepared_microdata.fst from the acervo.
+#' Thin writer: select dashboard-relevant columns from `annual_recoded` and
+#' write `prepared_microdata.fst`.
 #'
-#' @param acervo_manifest data.table from Layer 1 (must include OK / DOWNLOADED_NEW
-#'   rows for all expected quarterly + annual files)
-#' @param deflator_path character path to the IBGE deflator .xls
-#' @param dest_path character path of the output .fst (Layer 2 cache)
-#' @param utils_inequality_path path to PNADCperiods-dashboard/R/utils_inequality.R
-#'   (sourced for sex_label, race_label, education_group, uf_to_region, ...)
+#' PR4: this function used to load the annual stack, apply_periods, V2005
+#' filter, deflate, build pc_income components, build demographic groupings.
+#' All of that moved to dedicated targets:
+#'   stack_annual → annual_stacked  (tar-stack.R)
+#'   recode_annual → annual_recoded (tar-recode.R)
+#' This is now just a writer that materialises the .fst cache for external
+#' consumers (legacy scripts, dashboard offline mode, Phase 5 equivalence).
+#'
+#' @param annual_recoded data.table from `recode_annual`
+#' @param dest_path character path for the .fst
 #' @return character dest_path
-build_prepared_microdata <- function(acervo_manifest,
-                                     deflator_path,
-                                     dest_path,
-                                     utils_inequality_path) {
+build_prepared_microdata <- function(annual_recoded, dest_path) {
   set_fst_threads(2L)
-  source(utils_inequality_path, local = TRUE)
-
-  # Quarterly: all rows with file_type == "quarterly" and a usable status
-  qf <- acervo_manifest[
-    file_type == "quarterly" &
-      status %in% c("OK", "DOWNLOADED_NEW") &
-      !is.na(local_path)
-  ]
-  if (!nrow(qf)) stop("No quarterly files available in manifest.")
-
-  message(sprintf("Loading %d quarterly files for crosswalk...", nrow(qf)))
-  quarterly_data <- data.table::rbindlist(
-    lapply(qf$local_path, function(p) {
-      avail <- intersect(quarterly_required_vars, names(fst::read_fst(p, from = 1L, to = 1L)))
-      fst::read_fst(p, columns = avail, as.data.table = TRUE)
-    }),
-    fill = TRUE
-  )
-  gc()
-
-  message(sprintf("Quarterly stack: %s rows", format(nrow(quarterly_data), big.mark = ",")))
-  crosswalk <- build_crosswalk(quarterly_data)
-  rm(quarterly_data); gc()
-
-  det_rate <- crosswalk[, mean(determined_month, na.rm = TRUE)]
-  message(sprintf("Crosswalk determination rate: %.1f%%", 100 * det_rate))
-
-  # Annual: filter to chosen visit
-  af <- acervo_manifest[
-    file_type == "annual" &
-      status %in% c("OK", "DOWNLOADED_NEW") &
-      !is.na(local_path)
-  ]
-  af[, default_visit := get_default_visit(year)]
-  af <- af[period == default_visit]
-  if (!nrow(af)) stop("No annual files available in manifest after visit filter.")
-
-  message(sprintf("Loading %d annual visits...", nrow(af)))
-  annual_data <- load_annual_with_income_harmonization(af$local_path)
-  gc()
-
-  # Standardize join keys to uppercase (matches pnadc_apply_periods expectations)
-  key_mappings <- c(
-    "ano" = "Ano", "trimestre" = "Trimestre",
-    "upa" = "UPA", "v1008" = "V1008", "v1014" = "V1014",
-    "v1032" = "V1032", "uf" = "UF", "v2009" = "V2009"
-  )
-  for (old in names(key_mappings)) {
-    if (old %in% names(annual_data)) {
-      data.table::setnames(annual_data, old, key_mappings[[old]])
-    }
-  }
-
-  d <- apply_periods_annual(annual_data, crosswalk)
-  rm(annual_data, crosswalk); gc()
-
-  # Filter to IBGE's household-income membership: keep all residents,
-  # excluding only V2005 in {17, 18, 19} (pensionista, empregado domestico,
-  # parente do empregado domestico). Matches IBGE VD2003 / VD3003.
-  d <- d[!v2005 %in% c(17L, 18L, 19L)]
-
-  # Deflate
-  d <- deflate_incomes(d, deflator_path)
-  d <- build_pc_income_components(d)
-  d <- build_demographic_groupings(d)
-
-  # Final select
   keep_cols <- c(
     "Ano", "Trimestre", "UF", "ref_month_yyyymm", "ref_month_in_quarter",
     "ref_month_in_year", "weight_monthly",
@@ -112,9 +47,8 @@ build_prepared_microdata <- function(acervo_manifest,
     "sexo", "raca", "faixa_educ", "regiao", "uf_abbrev",
     "urbano", "faixa_idade", "V2009"
   )
-  keep_cols <- intersect(keep_cols, names(d))
-  d_final <- d[, ..keep_cols][!is.na(ref_month_yyyymm)]
-
+  keep_cols <- intersect(keep_cols, names(annual_recoded))
+  d_final <- annual_recoded[, ..keep_cols][!is.na(ref_month_yyyymm)]
   dir.create(dirname(dest_path), recursive = TRUE, showWarnings = FALSE)
   tmp <- paste0(dest_path, ".tmp")
   fst::write_fst(d_final, tmp)
@@ -122,82 +56,24 @@ build_prepared_microdata <- function(acervo_manifest,
   dest_path
 }
 
-# ------------------------------------------------------------------------------
-# Annual loader with income variable harmonization (pre-2015 vs post-2015)
-# ------------------------------------------------------------------------------
-
-load_annual_with_income_harmonization <- function(paths) {
-  vars_pre <- c("v500111", "v500211", "v500311", "v500411",
-                "v500511", "v500611", "v500711", "v500811",
-                "v500911", "v501011", "v501111", "v501211", "v501311")
-  vars_post <- c("v5001a2", "v5002a2", "v5003a2", "v5005a2",
-                 "v5008a2", "v5004a2", "v5006a2", "v5007a2")
-  base <- c("ano", "trimestre", "upa", "v1008", "v1014",
-            "v2005", "v2007", "v2009", "v2010", "vd3004", "v1022",
-            "uf", "estrato",
-            "v1032", "posest", "posest_sxi",
-            "vd5008", "vd4019", "vd4020")
-
-  Sum <- function(...) {
-    X <- cbind(...)
-    all_na <- rowSums(!is.na(X)) == 0L
-    res <- rowSums(X, na.rm = TRUE)
-    res[all_na] <- NA
-    res
-  }
-
-  data.table::rbindlist(lapply(paths, function(f) {
-    dt <- fst::read_fst(f, as.data.table = TRUE)
-    data.table::setnames(dt, tolower(names(dt)))
-    yr <- if ("ano" %in% names(dt)) as.integer(dt$ano[1L]) else
-      as.integer(sub(".*pnadc_(\\d{4}).*", "\\1", basename(f)))
-
-    income_vars <- if (yr < 2015) vars_pre
-                   else if (yr == 2015) c(vars_pre, vars_post)
-                   else vars_post
-    cols <- intersect(c(base, income_vars), names(dt))
-    dt <- dt[, ..cols]
-
-    if (yr <= 2014L) {
-      dt[, v5001a2 := data.table::fifelse(is.na(v500911), NA_real_, as.numeric(v500911))]
-      dt[, v5002a2 := data.table::fifelse(is.na(v501011), NA_real_, as.numeric(v501011))]
-      dt[, v5003a2 := data.table::fifelse(is.na(v501111), NA_real_, as.numeric(v501111))]
-      dt[, v5005a2 := data.table::fifelse(is.na(v500811), NA_real_, as.numeric(v500811))]
-      dt[, v5008a2 := Sum(v500311, v500411, v501211, v501311)]
-      dt[, v5004a2 := Sum(v500111, v500211)]
-      dt[, v5006a2 := Sum(v500711, v500511)]
-      dt[, v5007a2 := data.table::fifelse(is.na(v500611), NA_real_, as.numeric(v500611))]
-      old <- intersect(vars_pre, names(dt))
-      if (length(old)) dt[, (old) := NULL]
-    } else if (yr == 2015L) {
-      dt[, v5001a2 := Sum(v5001a2, v500911)]
-      dt[, v5002a2 := Sum(v5002a2, v501011)]
-      dt[, v5003a2 := Sum(v5003a2, v501111)]
-      dt[, v5005a2 := Sum(v5005a2, v500811)]
-      dt[, v5008a2 := Sum(v5008a2, v500311, v500411, v501211, v501311)]
-      dt[, v5004a2 := Sum(v5004a2, v500111, v500211)]
-      dt[, v5006a2 := Sum(v5006a2, v500711, v500511)]
-      dt[, v5007a2 := Sum(v5007a2, v500611)]
-      old <- intersect(vars_pre, names(dt))
-      if (length(old)) dt[, (old) := NULL]
-    }
-    dt
-  }), fill = TRUE)
-}
+# PR4: load_annual_with_income_harmonization moved to tar-stack.R as the
+# helper implementing stack_annual().
 
 # ------------------------------------------------------------------------------
 # Deflation step (CO2 + INPC to target date)
 # ------------------------------------------------------------------------------
 
-deflate_incomes <- function(d, deflator_path) {
-  if (!file.exists(deflator_path))
-    stop("Deflator file not found: ", deflator_path, call. = FALSE)
-  deflator <- readxl::read_excel(deflator_path)
-  data.table::setDT(deflator)
-  deflator <- deflator[, .(Ano = ano, Trimestre = trim, UF = uf, CO2, CO2e, CO3)]
-  deflator[, `:=`(Ano = as.numeric(Ano),
-                  Trimestre = as.numeric(Trimestre),
-                  UF = as.numeric(UF))]
+#' @param deflator_dt data.table from `read_deflator_xls` (in `tar-network.R`),
+#'   pre-parsed once per tar_make in the `deflator_dt` target. Columns
+#'   (Ano, Trimestre, UF, CO2, CO2e, CO3) all numeric.
+#' @param inpc_factor numeric scalar — INPC factor for mid-2024 → real_date.
+#'   Pre-computed by `compute_inpc_factors` (in `tar-network.R`) to avoid
+#'   re-hitting the IPEA API inside this builder.
+deflate_incomes <- function(d, deflator_dt, inpc_factor) {
+  if (!is.numeric(inpc_factor) || length(inpc_factor) != 1L || !is.finite(inpc_factor))
+    stop("inpc_factor must be a single finite numeric (got: ",
+         paste(class(inpc_factor), collapse = "/"), ")", call. = FALSE)
+  deflator <- data.table::copy(deflator_dt)  # avoid mutating shared target
   d[, UF := as.numeric(UF)]
 
   # Refuse to silently propagate NA when the deflator XLS doesn't cover the
@@ -210,14 +86,12 @@ deflate_incomes <- function(d, deflator_path) {
   if (nrow(uncovered)) {
     sample <- utils::head(uncovered, 10L)
     stop(sprintf(
-      "Deflator file '%s' does not cover %d microdata key(s) on (Ano, Trimestre, UF). First %d: %s. Update the deflator XLS in %s.",
-      basename(deflator_path),
+      "Deflator does not cover %d microdata key(s) on (Ano, Trimestre, UF). First %d: %s. Update the deflator XLS via tar_invalidate(\"deflator_download\") + tar_make().",
       nrow(uncovered),
       nrow(sample),
       paste(sprintf("%d-Q%d-UF%02d",
                     sample$Ano, sample$Trimestre, sample$UF),
-            collapse = ", "),
-      dirname(deflator_path)
+            collapse = ", ")
     ), call. = FALSE)
   }
 
@@ -225,10 +99,6 @@ deflate_incomes <- function(d, deflator_path) {
   data.table::setkeyv(d, c("Ano", "Trimestre", "UF"))
   d <- deflator[d]
 
-  inpc_factor <- deflateBR::inpc(
-    1, nominal_dates = as.Date("2024-07-01"),
-    real_date = deflation_target_date
-  )
   message(sprintf("INPC adjustment factor (mid-2024 -> %s): %.4f",
                   deflation_target_date, inpc_factor))
 
@@ -345,8 +215,12 @@ build_demographic_groupings <- function(d) {
 
 build_inequality_outputs <- function(prepared_microdata_path,
                                      dest_dir,
-                                     utils_inequality_path) {
-  source(utils_inequality_path, local = TRUE)
+                                     measures_inequality_path) {
+  # Source into globalenv (default): compute_breakdowns/shares/lorenz/decomp
+  # live in globalenv (sourced by _targets.R) and lexically reference
+  # weighted_gini/lorenz_points/income_shares/etc. via globalenv. Same
+  # rationale as Plan 5 fix for build_prepared_microdata.
+  source(measures_inequality_path)
   d <- fst::read_fst(prepared_microdata_path, as.data.table = TRUE)
 
   breakdown_specs <- list(
@@ -385,13 +259,12 @@ build_inequality_outputs <- function(prepared_microdata_path,
     )
   }
 
-  months <- sort(unique(d$ref_month_yyyymm))
+  # PR6: vectorized via data.table by-group sweeps. The 4 sub-functions
+  # (compute_breakdowns, compute_shares, compute_lorenz, compute_gini_decomp)
+  # below replace ~6,500 nested-loop iterations with ~1 grouped pass each.
 
   # A. Time series
-  ineq <- compute_breakdowns(d, months, breakdown_specs, function(sub) {
-    if (nrow(sub) < 30L) return(NULL)
-    measures_fn(sub$hhinc_pc, sub$weight_monthly)
-  })
+  ineq <- compute_breakdowns(d, breakdown_specs, measures_fn)
   ineq[, period := as.Date(sprintf("%d-%02d-15",
                                    ref_month_yyyymm %/% 100,
                                    ref_month_yyyymm %% 100))]
@@ -400,7 +273,7 @@ build_inequality_outputs <- function(prepared_microdata_path,
 
   # B. Income shares (skip uf — too many)
   shares_specs <- breakdown_specs[vapply(breakdown_specs, function(s) s$type != "uf", logical(1L))]
-  shares <- compute_shares(d, months, shares_specs)
+  shares <- compute_shares(d, shares_specs)
   shares[, period := as.Date(sprintf("%d-%02d-15",
                                      ref_month_yyyymm %/% 100,
                                      ref_month_yyyymm %% 100))]
@@ -413,12 +286,12 @@ build_inequality_outputs <- function(prepared_microdata_path,
     list(type = "race",    col = "raca"),
     list(type = "region",  col = "regiao")
   )
-  lorenz <- compute_lorenz(d, months, lorenz_specs)
+  lorenz <- compute_lorenz(d, lorenz_specs)
   lorenz_path <- file.path(dest_dir, "lorenz_data.rds")
   saveRDS_atomic(lorenz, lorenz_path)
 
   # D. Gini decomposition (overall, monthly)
-  decomp <- compute_gini_decomp(d, months, income_vars, income_source_labels)
+  decomp <- compute_gini_decomp(d, income_vars, income_source_labels)
   decomp[, period := as.Date(sprintf("%d-%02d-15",
                                      ref_month_yyyymm %/% 100,
                                      ref_month_yyyymm %% 100))]
@@ -428,172 +301,178 @@ build_inequality_outputs <- function(prepared_microdata_path,
   c(inequality_path, shares_path, lorenz_path, decomp_path)
 }
 
-# helpers used above
-compute_breakdowns <- function(d, months, specs, measure_fn) {
-  out <- vector("list")
-  k <- 0L
-  for (sp in specs) {
+# PR6 vectorized helpers (replaces ~6,500 nested-loop iterations with ~40
+# data.table by-group sweeps). Each sub-function: 1 sweep per breakdown_spec,
+# rbinded. Same numeric output (modulo floating-point summation order) as the
+# legacy nested-loop version.
+
+compute_breakdowns <- function(d, specs, measure_fn) {
+  parts <- lapply(specs, function(sp) {
     if (sp$type == "overall") {
-      for (m in months) {
-        sub <- d[ref_month_yyyymm == m]
-        meas <- measure_fn(sub)
-        if (is.null(meas)) next
-        for (mn in names(meas)) {
-          k <- k + 1L
-          out[[k]] <- data.table::data.table(
-            ref_month_yyyymm = m,
-            breakdown_type = "overall",
-            breakdown_value = "Nacional",
-            measure = mn,
-            value = meas[[mn]],
-            n_obs = nrow(sub)
-          )
+      res <- d[, {
+        if (.N < 30L) NULL else {
+          meas <- measure_fn(hhinc_pc, weight_monthly)
+          list(measure = names(meas), value = unlist(meas, use.names = FALSE),
+               n_obs = .N)
         }
-      }
+      }, by = .(ref_month_yyyymm)]
+      if (!nrow(res)) return(NULL)
+      res[, `:=`(breakdown_type = "overall", breakdown_value = "Nacional")]
+      res
     } else {
-      grps <- d[!is.na(get(sp$col)), unique(get(sp$col))]
-      grps <- grps[!is.na(grps)]
-      for (g in grps) {
-        for (m in months) {
-          sub <- d[ref_month_yyyymm == m & get(sp$col) == g]
-          meas <- measure_fn(sub)
-          if (is.null(meas)) next
-          for (mn in names(meas)) {
-            k <- k + 1L
-            out[[k]] <- data.table::data.table(
-              ref_month_yyyymm = m,
-              breakdown_type = sp$type,
-              breakdown_value = g,
-              measure = mn,
-              value = meas[[mn]],
-              n_obs = nrow(sub)
-            )
+      bcol <- sp$col
+      res <- d[!is.na(get(bcol)), {
+        if (.N < 30L) NULL else {
+          meas <- measure_fn(hhinc_pc, weight_monthly)
+          list(measure = names(meas), value = unlist(meas, use.names = FALSE),
+               n_obs = .N)
+        }
+      }, by = c("ref_month_yyyymm", bcol)]
+      if (!nrow(res)) return(NULL)
+      data.table::setnames(res, bcol, "breakdown_value")
+      res[, breakdown_type := sp$type]
+      res[, breakdown_value := as.character(breakdown_value)]
+      res
+    }
+  })
+  data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
+}
+
+compute_shares <- function(d, specs) {
+  parts <- list()
+  for (n_groups in c(5L, 10L)) {
+    type_label <- if (n_groups == 5L) "quintile" else "decile"
+    for (sp in specs) {
+      if (sp$type == "overall") {
+        res <- d[, {
+          if (.N < 50L) NULL else {
+            sh <- income_shares(hhinc_pc, weight_monthly, groups = n_groups)
+            list(group_label = sh$group_label, share = sh$share)
           }
+        }, by = .(ref_month_yyyymm)]
+        if (nrow(res)) {
+          res[, `:=`(breakdown_type = "overall", breakdown_value = "Nacional",
+                     group_type = type_label)]
+          parts[[length(parts) + 1L]] <- res
+        }
+      } else {
+        bcol <- sp$col
+        res <- d[!is.na(get(bcol)), {
+          if (.N < 50L) NULL else {
+            sh <- income_shares(hhinc_pc, weight_monthly, groups = n_groups)
+            list(group_label = sh$group_label, share = sh$share)
+          }
+        }, by = c("ref_month_yyyymm", bcol)]
+        if (nrow(res)) {
+          data.table::setnames(res, bcol, "breakdown_value")
+          res[, `:=`(breakdown_type = sp$type, group_type = type_label)]
+          res[, breakdown_value := as.character(breakdown_value)]
+          parts[[length(parts) + 1L]] <- res
         }
       }
     }
   }
-  data.table::rbindlist(out)
+  data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
 }
 
-compute_shares <- function(d, months, specs) {
-  out <- vector("list"); k <- 0L
-  for (sp in specs) {
+compute_lorenz <- function(d, specs) {
+  parts <- lapply(specs, function(sp) {
     if (sp$type == "overall") {
-      for (m in months) {
-        sub <- d[ref_month_yyyymm == m]
-        if (nrow(sub) < 50L) next
-        for (n_groups in c(5L, 10L)) {
-          sh <- income_shares(sub$hhinc_pc, sub$weight_monthly, groups = n_groups)
-          k <- k + 1L
-          out[[k]] <- data.table::data.table(
-            ref_month_yyyymm = m,
-            breakdown_type = "overall",
-            breakdown_value = "Nacional",
-            group_type = if (n_groups == 5L) "quintile" else "decile",
-            group_label = sh$group_label,
-            share = sh$share
-          )
-        }
-      }
+      res <- d[, {
+        if (.N < 50L) NULL else lorenz_points(hhinc_pc, weight_monthly, n = 100L)
+      }, by = .(ref_month_yyyymm)]
+      if (!nrow(res)) return(NULL)
+      res[, `:=`(breakdown_type = "overall", breakdown_value = "Nacional")]
+      res
     } else {
-      grps <- d[!is.na(get(sp$col)), unique(get(sp$col))]
-      grps <- grps[!is.na(grps)]
-      for (g in grps) for (m in months) {
-        sub <- d[ref_month_yyyymm == m & get(sp$col) == g]
-        if (nrow(sub) < 50L) next
-        for (n_groups in c(5L, 10L)) {
-          sh <- income_shares(sub$hhinc_pc, sub$weight_monthly, groups = n_groups)
-          k <- k + 1L
-          out[[k]] <- data.table::data.table(
-            ref_month_yyyymm = m,
-            breakdown_type = sp$type,
-            breakdown_value = g,
-            group_type = if (n_groups == 5L) "quintile" else "decile",
-            group_label = sh$group_label,
-            share = sh$share
-          )
-        }
-      }
+      bcol <- sp$col
+      res <- d[!is.na(get(bcol)), {
+        if (.N < 50L) NULL else lorenz_points(hhinc_pc, weight_monthly, n = 100L)
+      }, by = c("ref_month_yyyymm", bcol)]
+      if (!nrow(res)) return(NULL)
+      data.table::setnames(res, bcol, "breakdown_value")
+      res[, breakdown_type := sp$type]
+      res[, breakdown_value := as.character(breakdown_value)]
+      res
     }
-  }
-  data.table::rbindlist(out)
+  })
+  data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
 }
 
-compute_lorenz <- function(d, months, specs) {
-  out <- vector("list"); k <- 0L
-  for (sp in specs) {
-    if (sp$type == "overall") {
-      for (m in months) {
-        sub <- d[ref_month_yyyymm == m]
-        if (nrow(sub) < 50L) next
-        lp <- lorenz_points(sub$hhinc_pc, sub$weight_monthly, n = 100L)
-        lp[, ref_month_yyyymm := m]
-        lp[, breakdown_type := "overall"]
-        lp[, breakdown_value := "Nacional"]
-        k <- k + 1L; out[[k]] <- lp
-      }
-    } else {
-      grps <- d[!is.na(get(sp$col)), unique(get(sp$col))]
-      grps <- grps[!is.na(grps)]
-      for (g in grps) for (m in months) {
-        sub <- d[ref_month_yyyymm == m & get(sp$col) == g]
-        if (nrow(sub) < 50L) next
-        lp <- lorenz_points(sub$hhinc_pc, sub$weight_monthly, n = 100L)
-        lp[, ref_month_yyyymm := m]
-        lp[, breakdown_type := sp$type]
-        lp[, breakdown_value := g]
-        k <- k + 1L; out[[k]] <- lp
-      }
+compute_gini_decomp <- function(d, income_vars, labels_dt) {
+  res <- d[, {
+    if (.N < 100L) NULL else {
+      decomp <- gini_decomposition(
+        dt = .SD,
+        income_vars = income_vars,
+        total_var = "hhinc_pc",
+        weight_var = "weight_monthly"
+      )
+      list(income_source = decomp$income_source,
+           concentration_coeff = decomp$concentration_coeff,
+           income_share = decomp$income_share,
+           contribution_to_gini = decomp$contribution_to_gini)
     }
-  }
-  data.table::rbindlist(out)
-}
-
-compute_gini_decomp <- function(d, months, income_vars, labels_dt) {
-  out <- vector("list"); k <- 0L
-  for (m in months) {
-    sub <- d[ref_month_yyyymm == m]
-    if (nrow(sub) < 100L) next
-    decomp <- gini_decomposition(
-      dt = sub,
-      income_vars = income_vars,
-      total_var = "hhinc_pc",
-      weight_var = "weight_monthly"
-    )
-    decomp <- merge(decomp, labels_dt,
-                    by.x = "income_source", by.y = "var", all.x = TRUE)
-    decomp[, income_source := source_id]
-    decomp[, source_id := NULL]
-    decomp[, ref_month_yyyymm := m]
-    k <- k + 1L; out[[k]] <- decomp
-  }
-  data.table::rbindlist(out)
+  }, by = .(ref_month_yyyymm)]
+  if (!nrow(res)) return(res)
+  res <- merge(res, labels_dt,
+               by.x = "income_source", by.y = "var", all.x = TRUE)
+  res[, income_source := source_id]
+  res[, source_id := NULL]
+  res
 }
 
 # ------------------------------------------------------------------------------
 # Layer 3 — poverty outputs (1 .rds)
 # ------------------------------------------------------------------------------
 
+#' @param inpc_factor_table data.table(nominal_date, factor) — pre-computed
+#'   in `compute_inpc_factors` (in `tar-network.R`). Replaces the 3 internal
+#'   `deflateBR::inpc` calls (WB lines @ 2021-07, MW quarter/half @ year-mid).
 build_poverty_outputs <- function(prepared_microdata_path,
+                                  inpc_factor_table,
                                   dest_dir,
-                                  utils_inequality_path) {
-  source(utils_inequality_path, local = TRUE)
+                                  measures_poverty_path) {
+  # Source into globalenv (default): protects against future refactors that
+  # move the j-expression callers into globalenv helpers (same lesson as
+  # Plan 5 fix for build_prepared_microdata).
+  source(measures_poverty_path)
   d <- fst::read_fst(prepared_microdata_path, as.data.table = TRUE)
 
-  wb_lines <- get_wb_poverty_lines(reference_date = deflation_target_date)
+  # WB poverty lines: deflate from 2021-07 PPP-anchored values.
+  # Replaces `get_wb_poverty_lines(reference_date = ...)` to avoid a
+  # network call inside this builder.
+  ppp_factor <- 2.45
+  days_to_month <- 365 / 12
+  factor_2021 <- inpc_factor_at(inpc_factor_table, as.Date("2021-07-01"))
+  wb_lines <- data.table::data.table(
+    line_id = c("wb_300", "wb_420", "wb_830"),
+    label_en = c("Extreme Poverty ($3.00/day)",
+                 "Lower-Middle ($4.20/day)",
+                 "Upper-Middle ($8.30/day)"),
+    label_pt = c("Pobreza Extrema ($3,00/dia)",
+                 "Renda Media-Baixa ($4,20/dia)",
+                 "Renda Media-Alta ($8,30/dia)"),
+    usd_per_day = c(3.00, 4.20, 8.30)
+  )
+  wb_lines[, brl_monthly_2021 := usd_per_day * ppp_factor * days_to_month]
+  wb_lines[, brl_monthly_ref := brl_monthly_2021 * factor_2021]
+
+  # MW table: deflate per-year MW values via lookup (one merge, no API calls).
   mw_table <- get_historical_minimum_wage()
   mw_table[, mw_quarter := salario_minimo / 4]
   mw_table[, mw_half := salario_minimo / 2]
   mw_table[, nominal_date := as.Date(sprintf("%d-07-01", ano))]
-  mw_table[, mw_quarter_target := deflateBR::inpc(
-    mw_quarter, nominal_dates = nominal_date,
-    real_date = deflation_target_date
-  )]
-  mw_table[, mw_half_target := deflateBR::inpc(
-    mw_half, nominal_dates = nominal_date,
-    real_date = deflation_target_date
-  )]
+  mw_table <- merge(mw_table, inpc_factor_table,
+                    by = "nominal_date", all.x = TRUE)
+  if (any(is.na(mw_table$factor))) {
+    missing_yrs <- mw_table[is.na(factor), ano]
+    stop(sprintf("INPC factor missing for MW years: %s",
+                 paste(sort(unique(missing_yrs)), collapse = ", ")),
+         call. = FALSE)
+  }
+  mw_table[, mw_quarter_target := mw_quarter * factor]
+  mw_table[, mw_half_target := mw_half * factor]
 
   poverty_lines <- list()
   for (i in seq_len(nrow(wb_lines))) {
@@ -622,43 +501,67 @@ build_poverty_outputs <- function(prepared_microdata_path,
     list(type = "urban_rural",  col = "urbano"),
     list(type = "age_group",    col = "faixa_idade")
   )
-  months <- sort(unique(d$ref_month_yyyymm))
 
-  out <- vector("list"); k <- 0L
+  # PR5 vectorization: 5 lines × 8 breakdowns = 40 grouped sweeps via
+  # data.table `by`, instead of ~10,500 nested-loop iterations. Same numeric
+  # output (modulo floating-point summation order) as the legacy nested loop.
+  out <- vector("list", length(poverty_lines) * length(breakdown_specs))
+  k <- 0L
   for (line_name in names(poverty_lines)) {
     pline <- poverty_lines[[line_name]]
+
+    # Materialize per-row z column. For "fixed", z is constant; for "by_year",
+    # merge year-keyed value into d (rows for years not in the lookup are
+    # dropped — matches the legacy `next` behaviour).
+    if (pline$type == "fixed") {
+      d_z <- data.table::copy(d)
+      d_z[, z := pline$value]
+    } else {
+      year_z <- pline$values[, .(Ano = as.numeric(ano), z = value)]
+      d_z <- merge(d, year_z, by = "Ano", all.x = FALSE)
+    }
+    if (!nrow(d_z)) next
+
     for (sp in breakdown_specs) {
-      grps <- if (sp$type == "overall") list("Nacional")
-              else as.list(d[!is.na(get(sp$col)), unique(get(sp$col))])
-      grps <- grps[!vapply(grps, is.na, logical(1L))]
-      for (g in grps) for (m in months) {
-        sub <- if (sp$type == "overall") d[ref_month_yyyymm == m]
-               else d[ref_month_yyyymm == m & get(sp$col) == g]
-        if (nrow(sub) < 10L) next
-        z <- if (pline$type == "fixed") pline$value
-             else {
-               yr <- m %/% 100L
-               vr <- pline$values[ano == yr]
-               if (!nrow(vr)) next
-               vr$value[1L]
-             }
-        fgt <- fgt_all(sub$hhinc_pc, z, sub$weight_monthly)
-        k <- k + 1L
-        out[[k]] <- data.table::data.table(
-          ref_month_yyyymm = m,
-          poverty_line_id = line_name,
-          poverty_line_value = z,
-          breakdown_type = sp$type,
-          breakdown_value = as.character(g),
-          fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
-          n_poor = fgt$n_poor, total_pop = fgt$total_pop,
-          mean_income_poor = fgt$mean_income_poor,
-          n_obs = nrow(sub)
-        )
+      if (sp$type == "overall") {
+        res <- d_z[, {
+          fgt <- fgt_all(hhinc_pc, z, weight_monthly)
+          list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
+               n_poor = fgt$n_poor, total_pop = fgt$total_pop,
+               mean_income_poor = fgt$mean_income_poor,
+               poverty_line_value = z[1L], n_obs = .N)
+        }, by = .(ref_month_yyyymm)]
+        res[, breakdown_type := "overall"]
+        res[, breakdown_value := "Nacional"]
+      } else {
+        bcol <- sp$col
+        res <- d_z[!is.na(get(bcol)), {
+          fgt <- fgt_all(hhinc_pc, z, weight_monthly)
+          list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
+               n_poor = fgt$n_poor, total_pop = fgt$total_pop,
+               mean_income_poor = fgt$mean_income_poor,
+               poverty_line_value = z[1L], n_obs = .N)
+        }, by = c("ref_month_yyyymm", bcol)]
+        data.table::setnames(res, bcol, "breakdown_value")
+        res[, breakdown_type := sp$type]
+        res[, breakdown_value := as.character(breakdown_value)]
       }
+      res[, poverty_line_id := line_name]
+      res <- res[n_obs >= 10L]   # legacy filter
+      k <- k + 1L
+      out[[k]] <- res
     }
   }
-  poverty_data <- data.table::rbindlist(out)
+  out <- out[seq_len(k)]
+  poverty_data <- data.table::rbindlist(out, use.names = TRUE, fill = TRUE)
+  # Match legacy column order so external consumers (Phase 5 equivalence)
+  # see a stable schema.
+  data.table::setcolorder(poverty_data, c(
+    "ref_month_yyyymm", "poverty_line_id", "poverty_line_value",
+    "breakdown_type", "breakdown_value",
+    "fgt0", "fgt1", "fgt2",
+    "n_poor", "total_pop", "mean_income_poor", "n_obs"
+  ))
   poverty_data[, period := as.Date(sprintf("%d-%02d-15",
                                             ref_month_yyyymm %/% 100,
                                             ref_month_yyyymm %% 100))]
@@ -680,111 +583,15 @@ build_poverty_outputs <- function(prepared_microdata_path,
 # Layer 3 — state_monthly_data.rds (geographic from microdata)
 # ------------------------------------------------------------------------------
 
-build_state_monthly <- function(acervo_manifest, dest_path) {
-  set_fst_threads(2L)
-  qf <- acervo_manifest[
-    file_type == "quarterly" &
-      status %in% c("OK", "DOWNLOADED_NEW") &
-      !is.na(local_path)
-  ]
-  if (!nrow(qf)) stop("No quarterly files available for state_monthly.")
-
-  cols_needed <- c(
-    "Ano", "Trimestre", "UF",
-    "UPA", "Estrato", "V1008", "V1014", "V2003",
-    "V2008", "V20081", "V20082", "V2009",
-    "V1028", "posest", "posest_sxi",
-    "VD4001", "VD4002", "VD4003", "VD4004", "VD4004A",
-    "VD4005", "VD4009", "VD4010", "VD4012", "V4019"
-  )
-  pnadc <- data.table::rbindlist(lapply(qf$local_path, function(p) {
-    avail <- intersect(cols_needed, names(fst::read_fst(p, from = 1L, to = 1L)))
-    fst::read_fst(p, columns = avail, as.data.table = TRUE)
-  }), fill = TRUE)
-
-  numeric_cols <- c("V2009", "V1028", "VD4001", "VD4002", "VD4003", "VD4004",
-                    "VD4004A", "VD4005", "VD4009", "VD4010", "VD4012", "V4019")
-  for (col in numeric_cols) {
-    if (col %in% names(pnadc) && !is.numeric(pnadc[[col]])) {
-      pnadc[, (col) := as.numeric(get(col))]
-    }
-  }
-
-  # VD4004 vs VD4004A: SIDRA backfills tables 6438/6785 to 201203 using VD4004
-  # for 2012-Q1 to 2015-Q3 and VD4004A from 2015-Q4 onward. Mirror that exact
-  # cutoff via `vd4004_split_yyyymm` (single source of truth in tar-config.R).
-  # Pre-Q4-2015 microdata has no VD4004A column, so VD4004 is the only choice;
-  # from 2015-Q4 onward VD4004A is canonical (efetivamente vs. habitualmente
-  # trabalhadas — IBGE treats them as distinct indicators).
-  pnadc_yyyymm_q <- pnadc$Ano * 100L + pnadc$Trimestre * 3L  # last month of quarter
-  is_pre_split <- pnadc_yyyymm_q <= vd4004_split_yyyymm
-
-  pnadc[, `:=`(
-    pop14mais = 1L,
-    pea = data.table::fifelse(VD4001 == 1, 1L, 0L),
-    employed = data.table::fifelse(VD4001 == 1 & VD4002 == 1, 1L, 0L),
-    unemployed = data.table::fifelse(VD4001 == 1 & VD4002 == 2, 1L, 0L),
-    fora_forca = data.table::fifelse(VD4001 == 2, 1L, 0L),
-    subocuphoras = data.table::fifelse(
-      is_pre_split,
-      data.table::fifelse(!is.na(VD4004) & VD4004 == 1, 1L, 0L),
-      data.table::fifelse(!is.na(VD4004A) & VD4004A == 1, 1L, 0L)
-    ),
-    forcapotencial = data.table::fifelse(VD4003 == 1, 1L, 0L),
-    desalentado = data.table::fifelse(VD4005 == 1, 1L, 0L),
-    contribuinte = data.table::fifelse(VD4002 == 1 & VD4012 == 1, 1L, 0L)
-  )]
-
-  pnadc[, `:=`(
-    empregprivcomcart = data.table::fifelse(VD4009 == 1, 1L, 0L),
-    empregprivsemcart = data.table::fifelse(VD4009 == 2, 1L, 0L),
-    domesticocomcart  = data.table::fifelse(VD4009 == 3, 1L, 0L),
-    domesticosemcart  = data.table::fifelse(VD4009 == 4, 1L, 0L),
-    empregpublcomcart = data.table::fifelse(VD4009 == 5, 1L, 0L),
-    empregpublsemcart = data.table::fifelse(VD4009 == 6, 1L, 0L),
-    estatutmilitar    = data.table::fifelse(VD4009 == 7, 1L, 0L),
-    empregador        = data.table::fifelse(VD4009 == 8, 1L, 0L),
-    contapropria      = data.table::fifelse(VD4009 == 9, 1L, 0L),
-    trabfamauxiliar   = data.table::fifelse(VD4009 == 10, 1L, 0L)
-  )]
-
-  # Per-row CNPJ logic for self-employed informality.
-  # When V4019 is absent OR NA on a given row, conservatively treat the
-  # self-employed person as "sem CNPJ" (informal). This is robust to mixed
-  # stacks where some quarters have V4019 and others don't (rbindlist fills
-  # NA for missing columns).
-  if ("V4019" %in% names(pnadc)) {
-    pnadc[, contapropriasemcnpj := data.table::fifelse(
-      VD4009 == 9,
-      data.table::fifelse(is.na(V4019) | V4019 == 2, 1L, 0L),
-      0L
-    )]
-  } else {
-    pnadc[, contapropriasemcnpj := contapropria]
-  }
-  pnadc[, informal := empregprivsemcart + domesticosemcart +
-          contapropriasemcnpj + trabfamauxiliar]
-  pnadc[, `:=`(
-    empregpriv = empregprivcomcart + empregprivsemcart,
-    domestico = domesticocomcart + domesticosemcart,
-    empregpubl = empregpublcomcart + empregpublsemcart + estatutmilitar,
-    agropecuaria = data.table::fifelse(VD4010 == 1, 1L, 0L),
-    industria    = data.table::fifelse(VD4010 == 2, 1L, 0L),
-    construcao   = data.table::fifelse(VD4010 == 3, 1L, 0L),
-    comercio     = data.table::fifelse(VD4010 == 4, 1L, 0L),
-    transporte   = data.table::fifelse(VD4010 == 5, 1L, 0L),
-    alojaliment  = data.table::fifelse(VD4010 == 6, 1L, 0L),
-    infcomfinimobadm = data.table::fifelse(VD4010 == 7, 1L, 0L),
-    adminpublica = data.table::fifelse(VD4010 == 8, 1L, 0L),
-    outroservico = data.table::fifelse(VD4010 == 9, 1L, 0L),
-    servicodomestico = data.table::fifelse(VD4010 == 10, 1L, 0L)
-  )]
-  pnadc[, servicos := transporte + alojaliment + infcomfinimobadm +
-          adminpublica + outroservico + servicodomestico]
-
-  crosswalk <- build_crosswalk(pnadc)
-  pnadc <- apply_periods_quarterly(pnadc, crosswalk)
-  pnadc <- pnadc[!is.na(weight_monthly) & !is.na(UF) & V2009 >= 14]
+#' Aggregate state-monthly indicators from the recoded quarterly stack.
+#'
+#' PR3: prelude (read 56 .fst, type coercion, derived flags, apply_periods,
+#' V2009 filter) was extracted to `recode_quarterly` (in `tar-recode.R`).
+#' This function is now a thin aggregator: takes the recoded data.table,
+#' aggregates by (ref_month_yyyymm, UF), computes rates, melts to long form,
+#' and writes `state_monthly_data.rds`.
+build_state_monthly <- function(quarterly_recoded, dest_path) {
+  pnadc <- quarterly_recoded
 
   count_vars <- c(
     "pop14mais", "pea", "employed", "unemployed", "fora_forca",
@@ -830,9 +637,11 @@ build_state_monthly <- function(acervo_manifest, dest_path) {
 # Layer 3 — brazil_states_sf.rds (one-off; cached after first run)
 # ------------------------------------------------------------------------------
 
-build_brazil_states_sf <- function(dest_path) {
-  states <- geobr::read_state(year = 2020, simplified = TRUE)
-  states_simple <- rmapshaper::ms_simplify(states, keep = 0.01, keep_shapes = TRUE)
+#' @param brazil_states_sf_raw sf object — raw output from
+#'   `fetch_brazil_states_sf` (in `tar-network.R`). Network call hoisted to L1.
+build_brazil_states_sf <- function(brazil_states_sf_raw, dest_path) {
+  states_simple <- rmapshaper::ms_simplify(brazil_states_sf_raw,
+                                           keep = 0.01, keep_shapes = TRUE)
   states_simple <- sf::st_transform(states_simple, 4326)
   states_simple <- states_simple[, c("code_state", "abbrev_state",
                                      "name_state", "geom")]
@@ -844,58 +653,8 @@ build_brazil_states_sf <- function(dest_path) {
   dest_path
 }
 
-# ------------------------------------------------------------------------------
-# Layer 3 — geographic_data.rds (SIDRA fallback; small, fast, no microdata)
-# ------------------------------------------------------------------------------
-
-build_geographic_fallback <- function(dest_path) {
-  geographic_series <- list(
-    taxadesocup = "/t/4093/n3/all/v/4099/p/all/d/v4099%201",
-    taxapartic  = "/t/4092/n3/all/v/4096/p/all/d/v4096%201",
-    nivelocup   = "/t/4094/n3/all/v/4097/p/all/d/v4097%201"
-  )
-  base_url <- "https://apisidra.ibge.gov.br/values"
-
-  fetch_one <- function(name, path) {
-    url <- paste0(base_url, path)
-    response <- tryCatch(jsonlite::fromJSON(url, flatten = TRUE),
-                        error = function(e) NULL)
-    if (is.null(response) || !is.data.frame(response) || nrow(response) <= 1L)
-      return(NULL)
-    header <- as.character(response[1L, ])
-    dat <- response[-1L, , drop = FALSE]
-    names(dat) <- header
-    dt <- data.table::as.data.table(dat)
-    uf_col <- names(dt)[grepl("Unidade.*Codigo|UF.*Codigo", names(dt),
-                              ignore.case = TRUE)][1L]
-    p_col  <- names(dt)[grepl("Trimestre.*Codigo|Periodo.*Codigo",
-                              names(dt), ignore.case = TRUE)][1L]
-    if (is.na(uf_col) || is.na(p_col) || !"Valor" %in% names(dt)) return(NULL)
-    out <- data.table::data.table(
-      uf_code = as.integer(dt[[uf_col]]),
-      anomesfinaltrimmovel = as.integer(dt[[p_col]]),
-      value = as.numeric(gsub(",", ".", dt$Valor)),
-      indicator = name
-    )
-    out[!is.na(value) & !is.na(uf_code)]
-  }
-
-  parts <- Map(fetch_one, names(geographic_series), geographic_series)
-  parts <- parts[!vapply(parts, is.null, logical(1L))]
-  if (!length(parts)) {
-    warning("No SIDRA data for geographic fallback; writing empty stub.")
-    geo <- data.table::data.table(
-      uf_code = integer(), anomesfinaltrimmovel = integer(),
-      value = numeric(), indicator = character()
-    )
-  } else {
-    geo <- data.table::rbindlist(parts, fill = TRUE)
-    geo <- geo[uf_code >= 11L & uf_code <= 53L]
-    data.table::setorder(geo, indicator, anomesfinaltrimmovel, uf_code)
-  }
-  saveRDS_atomic(geo, dest_path)
-  dest_path
-}
+# `build_geographic_fallback` removed — see NOTE in tar-network.R about why
+# the SIDRA-based geographic fallback was deleted entirely.
 
 # ------------------------------------------------------------------------------
 # Atomic saveRDS

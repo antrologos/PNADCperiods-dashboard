@@ -22,6 +22,19 @@ test_that("list_expected_visits applies COVID visit rule", {
   expect_true(all(out$period == out$visit))
 })
 
+test_that("list_expected_visits with visits=1:5 enumerates all visits per year", {
+  source_pipeline_R()
+  out <- list_expected_visits(2025L, visits = 1L:5L)
+  # 13 years (2012..2024) x 5 visits = 65 rows
+  expect_equal(nrow(out), 13L * 5L)
+  expect_equal(out[year == 2020 & visit == 1L]$basename,
+               "pnadc_2020_visita1.fst")
+  expect_equal(out[year == 2020 & visit == 5L]$basename,
+               "pnadc_2020_visita5.fst")
+  # All 5 visits for 2024
+  expect_setequal(out[year == 2024]$visit, 1L:5L)
+})
+
 test_that("inventory_local returns empty data.table when directory absent", {
   source_pipeline_R()
   out <- inventory_local("/nonexistent/path/xyz", pattern = ".*")
@@ -101,6 +114,264 @@ test_that("plan_acervo_actions returns all MISSING when local inventory empty", 
   expect_equal(plan[year == 2021]$period, 5L)
 })
 
+# -----------------------------------------------------------------------------
+# Tests: plan_acervo_actions with FTP catalog (MISSING_UPSTREAM, OUTDATED)
+# -----------------------------------------------------------------------------
+
+test_that("remote_catalog with new file flags MISSING when local absent", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  inv <- data.table::data.table(
+    basename = character(), path = character(),
+    size_bytes = numeric(),
+    mtime_utc = as.POSIXct(character(), tz = "UTC")
+  )
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024_20250815.zip",
+      last_modified = as.POSIXct("2025-08-15 10:23", tz = "UTC"),
+      size_bytes = 2.1e8,
+      year = 2024L, quarter = 1L,
+      upstream_date = "20250815"
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote
+  )
+  expect_equal(plan$status, "MISSING")
+  expect_equal(plan$upstream_filename, "PNADC_012024_20250815.zip")
+})
+
+test_that("remote_catalog absent for expected entry => MISSING_UPSTREAM", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2099L, 1L)  # impossible far-future Q
+  expected <- expected[year == 2099L]
+  inv <- data.table::data.table(
+    basename = character(), path = character(),
+    size_bytes = numeric(),
+    mtime_utc = as.POSIXct(character(), tz = "UTC")
+  )
+  remote <- list()  # no entry for 2099
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote
+  )
+  expect_equal(plan$status, "MISSING_UPSTREAM")
+})
+
+test_that("OUTDATED detected when remote filename differs from sidecar", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  # Local present
+  tmp <- tempfile()
+  dir.create(tmp)
+  fst_path <- file.path(tmp, "pnadc_2024-1q.fst")
+  writeLines("x", fst_path)
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024_20260424.zip",   # NEW reweighted name
+      last_modified = as.POSIXct("2026-04-24 09:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = "20260424"
+    )
+  )
+  sidecar <- list(
+    "pnadc_2024-1q.fst" = list(
+      upstream_filename = "PNADC_012024_20250815.zip",  # OLD
+      upstream_last_modified = "2025-08-15T10:23:00Z"
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = sidecar
+  )
+  expect_equal(plan$status, "OUTDATED")
+  expect_match(plan$reason, "filename changed", fixed = TRUE)
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("OUTDATED detected when filename same but Last-Modified advanced", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  writeLines("x", file.path(tmp, "pnadc_2024-1q.fst"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",     # SAME name
+      last_modified = as.POSIXct("2026-04-24 09:00", tz = "UTC"),  # NEW date
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  sidecar <- list(
+    "pnadc_2024-1q.fst" = list(
+      upstream_filename = "PNADC_012024.zip",     # same name in sidecar
+      upstream_last_modified = "2025-08-15T10:23:00Z"  # OLD date
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = sidecar
+  )
+  expect_equal(plan$status, "OUTDATED")
+  expect_match(plan$reason, "Last-Modified advanced", fixed = TRUE)
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("bootstrap: no sidecar + local present + remote present => OK + capture", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  writeLines("x", file.path(tmp, "pnadc_2024-1q.fst"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024_20250815.zip",
+      last_modified = as.POSIXct("2025-08-15 10:23", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = "20250815"
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = NULL  # empty / first-run
+  )
+  expect_equal(plan$status, "OK")
+  expect_match(plan$reason, "bootstrap", fixed = TRUE)
+  # Bootstrap captures upstream identity for sidecar update by apply step
+  expect_equal(plan$upstream_filename, "PNADC_012024_20250815.zip")
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("OK when sidecar matches remote (filename + Last-Modified)", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  writeLines("x", file.path(tmp, "pnadc_2024-1q.fst"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:23", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  sidecar <- list(
+    "pnadc_2024-1q.fst" = list(
+      upstream_filename = "PNADC_012024.zip",
+      upstream_last_modified = "2025-08-15T10:23:00Z"
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = sidecar
+  )
+  expect_equal(plan$status, "OK")
+
+  unlink(tmp, recursive = TRUE)
+})
+
+# -----------------------------------------------------------------------------
+# Tests: plan_deflator_actions
+# -----------------------------------------------------------------------------
+
+test_that("plan_deflator_actions trimestral_bundle: MISSING when local absent", {
+  source_pipeline_R()
+  remote <- data.table::data.table(
+    filename = "Deflatores.zip",
+    last_modified = as.POSIXct("2026-02-26 09:00", tz = "UTC"),
+    size_bytes = 114000
+  )
+  plan <- plan_deflator_actions(
+    "trimestral_bundle", remote = remote,
+    local_path = "/nonexistent/Deflatores.zip"
+  )
+  expect_equal(plan$status, "MISSING")
+})
+
+test_that("plan_deflator_actions anual_xls: handles multiple files", {
+  source_pipeline_R()
+  remote <- data.table::data.table(
+    filename = c("deflator_PNADC_2024.xls", "deflator_PNADC_2025.xls"),
+    last_modified = as.POSIXct(c("2025-04-24 10:00", "2026-04-24 10:00"),
+                                tz = "UTC"),
+    size_bytes = c(174000, 175000),
+    year = c(2024L, 2025L)
+  )
+  empty_inv <- data.table::data.table(
+    basename = character(), path = character(),
+    size_bytes = numeric(), mtime_utc = as.POSIXct(character(), tz = "UTC")
+  )
+  plan <- plan_deflator_actions(
+    "anual_xls", remote = remote, local_inventory = empty_inv
+  )
+  expect_equal(nrow(plan), 2L)
+  expect_true(all(plan$status == "MISSING"))
+})
+
+# -----------------------------------------------------------------------------
+# Tests: sidecar I/O
+# -----------------------------------------------------------------------------
+
+test_that("acervo_sidecar round-trips through JSON", {
+  source_pipeline_R()
+  tmp <- tempfile(fileext = ".json")
+  s <- list(
+    "pnadc_2024-1q.fst" = list(
+      upstream_filename = "PNADC_012024_20250815.zip",
+      upstream_last_modified = "2025-08-15T10:23:00Z"
+    )
+  )
+  save_acervo_sidecar(s, tmp)
+  back <- load_acervo_sidecar(tmp)
+  expect_equal(back$`pnadc_2024-1q.fst`$upstream_filename,
+               "PNADC_012024_20250815.zip")
+  unlink(tmp)
+})
+
+test_that("update_acervo_sidecar adds and overwrites entries", {
+  source_pipeline_R()
+  s <- list()
+  s <- update_acervo_sidecar(s, "x.fst", "X_v1.zip",
+                              as.POSIXct("2025-01-01 00:00", tz = "UTC"))
+  expect_equal(s$x.fst$upstream_filename, "X_v1.zip")
+  s <- update_acervo_sidecar(s, "x.fst", "X_v2.zip",
+                              as.POSIXct("2026-01-01 00:00", tz = "UTC"))
+  expect_equal(s$x.fst$upstream_filename, "X_v2.zip")
+})
+
 test_that("atomic_rename succeeds in happy path", {
   source_pipeline_R()
   src <- tempfile(fileext = ".tmp")
@@ -125,6 +396,204 @@ test_that("atomic_rename overwrites pre-existing destination (Windows-safe)", {
   expect_true(file.exists(dst))
   expect_equal(readLines(dst), "new")
   unlink(dst)
+})
+
+test_that("is_empty_pnadc_response detects NULL", {
+  source_pipeline_R()
+  expect_true(is_empty_pnadc_response(NULL))
+})
+
+test_that("is_empty_pnadc_response detects 0-row data.frame", {
+  source_pipeline_R()
+  expect_true(is_empty_pnadc_response(data.frame()))
+  expect_true(is_empty_pnadc_response(data.table::data.table()))
+  expect_true(is_empty_pnadc_response(data.frame(x = integer(0))))
+})
+
+test_that("is_empty_pnadc_response returns FALSE for populated data.frame", {
+  source_pipeline_R()
+  expect_false(is_empty_pnadc_response(data.frame(x = 1L)))
+  expect_false(is_empty_pnadc_response(data.table::data.table(x = 1:5)))
+})
+
+test_that("download_quarter and download_visit reference is_empty_pnadc_response (regression)", {
+  source_pipeline_R()
+  q_body <- paste(deparse(body(download_quarter)), collapse = "\n")
+  v_body <- paste(deparse(body(download_visit)), collapse = "\n")
+  expect_match(q_body, "is_empty_pnadc_response")
+  expect_match(v_body, "is_empty_pnadc_response")
+})
+
+test_that("ensure_deflator_downloaded is idempotent when file already present", {
+  source_pipeline_R()
+  tmp_root <- tempfile("acervo_")
+  dir.create(file.path(tmp_root, "Anual", "visitas", "documentacao"),
+             recursive = TRUE)
+  existing <- file.path(tmp_root, "Anual", "visitas", "documentacao",
+                        "deflator_PNADC_2025.xls")
+  writeLines("dummy-xls-content", existing)
+
+  called <- FALSE
+  fake_download <- function(year, dest_path) {
+    called <<- TRUE
+    writeLines("should-not-overwrite", dest_path)
+    dest_path
+  }
+
+  out <- ensure_deflator_downloaded(2025L, tmp_root,
+                                    download_fn = fake_download)
+  expect_equal(out, existing)
+  expect_false(called)
+  expect_equal(readLines(existing), "dummy-xls-content")
+
+  unlink(tmp_root, recursive = TRUE)
+})
+
+test_that("ensure_deflator_downloaded skips download in dry-run mode", {
+  source_pipeline_R()
+  tmp_root <- tempfile("acervo_")
+
+  called <- FALSE
+  fake_download <- function(year, dest_path) {
+    called <<- TRUE
+    dest_path
+  }
+
+  withr::with_envvar(c(ACERVO_DRY_RUN = "1"), {
+    out <- ensure_deflator_downloaded(2025L, tmp_root,
+                                      download_fn = fake_download)
+  })
+  expect_match(out, "deflator_PNADC_2025\\.xls$")
+  expect_false(called)
+  expect_false(file.exists(out))
+
+  unlink(tmp_root, recursive = TRUE)
+})
+
+test_that("ensure_deflator_downloaded calls download_fn when file missing", {
+  source_pipeline_R()
+  tmp_root <- tempfile("acervo_")
+
+  called <- FALSE
+  call_args <- list()
+  fake_download <- function(year, dest_path) {
+    called <<- TRUE
+    call_args <<- list(year = year, dest_path = dest_path)
+    dir.create(dirname(dest_path), recursive = TRUE, showWarnings = FALSE)
+    writeLines("downloaded-content", dest_path)
+    dest_path
+  }
+
+  out <- ensure_deflator_downloaded(2025L, tmp_root,
+                                    download_fn = fake_download)
+  expect_true(called)
+  expect_equal(call_args$year, 2025L)
+  expect_match(call_args$dest_path,
+               "Anual.*visitas.*documentacao.*deflator_PNADC_2025\\.xls$")
+  expect_true(file.exists(out))
+
+  unlink(tmp_root, recursive = TRUE)
+})
+
+test_that("extract_and_sync_deflators copies new files into empty dest", {
+  source_pipeline_R()
+  zip_src <- tempfile("zsrc_"); dir.create(zip_src)
+  on.exit(unlink(zip_src, recursive = TRUE), add = TRUE)
+  writeLines("contents-A", file.path(zip_src, "deflator_PNADC_2024_trimestral_a.xls"))
+  writeLines("contents-B", file.path(zip_src, "deflator_PNADC_2025_trimestral_b.xls"))
+  zip_path <- tempfile(fileext = ".zip")
+  withr::with_dir(zip_src, utils::zip(zip_path, list.files(".")))
+  on.exit(unlink(zip_path), add = TRUE)
+
+  dest_dir <- tempfile("dest_"); dir.create(dest_dir)
+  on.exit(unlink(dest_dir, recursive = TRUE), add = TRUE)
+
+  copied <- extract_and_sync_deflators(zip_path, dest_dir)
+  expect_setequal(basename(copied),
+                  c("deflator_PNADC_2024_trimestral_a.xls",
+                    "deflator_PNADC_2025_trimestral_b.xls"))
+  expect_true(file.exists(file.path(dest_dir, "deflator_PNADC_2024_trimestral_a.xls")))
+})
+
+test_that("extract_and_sync_deflators replaces local file when size differs", {
+  source_pipeline_R()
+  zip_src <- tempfile("zsrc_"); dir.create(zip_src)
+  on.exit(unlink(zip_src, recursive = TRUE), add = TRUE)
+  writeLines("new-content-with-more-bytes",
+             file.path(zip_src, "deflator_PNADC_2025_trimestral_x.xls"))
+  zip_path <- tempfile(fileext = ".zip")
+  withr::with_dir(zip_src, utils::zip(zip_path, list.files(".")))
+  on.exit(unlink(zip_path), add = TRUE)
+
+  dest_dir <- tempfile("dest_"); dir.create(dest_dir)
+  on.exit(unlink(dest_dir, recursive = TRUE), add = TRUE)
+  writeLines("old", file.path(dest_dir, "deflator_PNADC_2025_trimestral_x.xls"))
+  before_size <- file.size(file.path(dest_dir, "deflator_PNADC_2025_trimestral_x.xls"))
+
+  copied <- extract_and_sync_deflators(zip_path, dest_dir)
+  expect_length(copied, 1L)
+  after_size <- file.size(file.path(dest_dir, "deflator_PNADC_2025_trimestral_x.xls"))
+  expect_gt(after_size, before_size)
+})
+
+test_that("extract_and_sync_deflators skips when local matches", {
+  source_pipeline_R()
+  zip_src <- tempfile("zsrc_"); dir.create(zip_src)
+  on.exit(unlink(zip_src, recursive = TRUE), add = TRUE)
+  payload <- "identical-bytes"
+  writeLines(payload, file.path(zip_src, "deflator_PNADC_2025_trimestral_y.xls"))
+  zip_path <- tempfile(fileext = ".zip")
+  withr::with_dir(zip_src, utils::zip(zip_path, list.files(".")))
+  on.exit(unlink(zip_path), add = TRUE)
+
+  dest_dir <- tempfile("dest_"); dir.create(dest_dir)
+  on.exit(unlink(dest_dir, recursive = TRUE), add = TRUE)
+  local_path <- file.path(dest_dir, "deflator_PNADC_2025_trimestral_y.xls")
+  writeLines(payload, local_path)
+  before_mtime <- file.mtime(local_path)
+  Sys.sleep(1.1)  # ensure detectable mtime delta if file is rewritten
+
+  copied <- extract_and_sync_deflators(zip_path, dest_dir)
+  expect_length(copied, 0L)
+  expect_equal(file.mtime(local_path), before_mtime)
+})
+
+test_that("ensure_quarterly_deflators_downloaded honours dry-run", {
+  source_pipeline_R()
+  tmp_root <- tempfile("acervo_")
+  called <- FALSE
+  fake_download <- function(dest_path) {
+    called <<- TRUE
+    dest_path
+  }
+  withr::with_envvar(c(ACERVO_DRY_RUN = "1"), {
+    out <- ensure_quarterly_deflators_downloaded(tmp_root,
+                                                 download_fn = fake_download)
+  })
+  expect_match(out, "Trimestral.*Documentacao$")
+  expect_false(called)
+})
+
+test_that("ensure_quarterly_deflators_downloaded calls download_fn and syncs", {
+  source_pipeline_R()
+  tmp_root <- tempfile("acervo_")
+  on.exit(unlink(tmp_root, recursive = TRUE), add = TRUE)
+
+  # fake_download will be invoked with a temp .zip dest_path; produce a
+  # tiny synthetic ZIP at that location
+  fake_download <- function(dest_path) {
+    src <- tempfile("zsrc_"); dir.create(src)
+    on.exit(unlink(src, recursive = TRUE), add = TRUE)
+    writeLines("payload",
+               file.path(src, "deflator_PNADC_2025_trimestral_z.xls"))
+    withr::with_dir(src, utils::zip(dest_path, list.files(".")))
+    dest_path
+  }
+
+  out <- ensure_quarterly_deflators_downloaded(tmp_root,
+                                               download_fn = fake_download)
+  expect_true(dir.exists(out))
+  expect_true(file.exists(file.path(out, "deflator_PNADC_2025_trimestral_z.xls")))
 })
 
 test_that("apply_acervo_plan honours dry-run (no downloads, status preserved)", {

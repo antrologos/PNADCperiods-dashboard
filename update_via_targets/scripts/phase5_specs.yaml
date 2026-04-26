@@ -1,0 +1,225 @@
+# =============================================================================
+# Phase 5 Equivalence Test — specs, tolerances, allowlist
+#
+# Read by `scripts/phase5_equivalence.R`. Drives the engine in
+# `R/phase5_compare.R`. Single source of truth — change tolerances or
+# allowlist entries here without touching R code.
+#
+# Empirical tolerance defaults derived from Round 2 investigation
+# (2026-04-26); see plan at
+# .claude/plans/2026-04-26_phase5-equivalence-test.md.
+# =============================================================================
+
+defaults:
+  # Per-column-class tolerance vectors. `abs` is absolute; `rel` is relative
+  # against pmax(|legacy|, |new|, eps). A column passes if EITHER bound is met.
+  tolerances:
+    rate:          { abs: 1.0e-2, rel: 0.05 }   # gini, palma, fgt0/1/2, share
+    currency:      { abs: 1.0,    rel: 0.06 }   # mean_income, mean_income_poor
+    count:         { abs: 1000,   rel: 0.005 }  # n_obs, n_poor
+    population:    { abs: 1.0e+5, rel: 0.01 }   # total_pop, state_monthly counts
+    lorenz:        { abs: 5.0e-2 }
+    decomposition: { abs: 0.5 }                 # concentration_coeff, etc.
+
+  # Row-count gate (axis D): |Δrows|/legacy_rows
+  rowcount:
+    pass_threshold: 0.01    # ≤ 1%  → PASS
+    warn_threshold: 0.05    # ≤ 5%  → WARN; > 5% → FAIL
+
+  # Numeric gate aggregation (axis E)
+  numeric:
+    pass_share_excess: 0.01   # ≤ 1% rows exceeding tol → PASS
+    warn_share_excess: 0.10   # ≤ 10% → WARN; > 10% → FAIL
+
+# -----------------------------------------------------------------------------
+# Per-asset specs
+# -----------------------------------------------------------------------------
+
+assets:
+
+  inequality_data:
+    file: inequality_data.rds
+    mode: rds
+    key_cols: [ref_month_yyyymm, breakdown_type, breakdown_value, measure]
+    overlap_col: ref_month_yyyymm
+    value_cols:
+      value: rate
+      n_obs: count
+
+  income_shares_data:
+    file: income_shares_data.rds
+    mode: rds
+    key_cols: [ref_month_yyyymm, breakdown_type, breakdown_value,
+               group_type, group_label]
+    overlap_col: ref_month_yyyymm
+    value_cols:
+      share: rate
+
+  lorenz_data:
+    file: lorenz_data.rds
+    mode: rds
+    key_cols: [ref_month_yyyymm, breakdown_type, breakdown_value, p]
+    overlap_col: ref_month_yyyymm
+    value_cols:
+      lorenz: lorenz
+
+  income_decomposition_data:
+    file: income_decomposition_data.rds
+    mode: rds
+    key_cols: [ref_month_yyyymm, income_source]
+    overlap_col: ref_month_yyyymm
+    value_cols:
+      concentration_coeff: decomposition
+      income_share:        decomposition
+      contribution_to_gini: decomposition
+
+  poverty_data:
+    file: poverty_data.rds
+    mode: rds
+    key_cols: [ref_month_yyyymm, poverty_line_id, breakdown_type,
+               breakdown_value]
+    overlap_col: ref_month_yyyymm
+    value_cols:
+      fgt0: rate
+      fgt1: rate
+      fgt2: rate
+      fgt0_smooth: rate
+      fgt1_smooth: rate
+      fgt2_smooth: rate
+      n_poor: population
+      total_pop: population
+      mean_income_poor: currency
+      n_obs: count
+
+  state_monthly_data:
+    file: state_monthly_data.rds
+    mode: rds
+    key_cols: [ref_month, uf_code, indicator]
+    overlap_col: ref_month
+    # state_monthly mixes rates (taxa*) and counts (pop*, employed, ...);
+    # population tolerance is generous enough for both.
+    value_cols:
+      value: population
+
+  brazil_states_sf:
+    file: brazil_states_sf.rds
+    mode: sf
+    structural_only: true
+    key_cols: [uf_code]
+    attribute_cols: [uf_abbrev, uf_name]
+
+  prepared_microdata:
+    file_proc: prepared_microdata.fst
+    mode: aggregate_only
+    aggregates:
+      - n_rows
+      - weighted_pop_total_by_quarter
+      - weighted_income_total_by_quarter
+      - categorical_marginals
+
+  geographic_data:
+    mode: skip
+    reason: "Removed on new side; state_monthly_data is canonical
+             (Plan 2026-04-26 Opção A)."
+
+# -----------------------------------------------------------------------------
+# Allowlist — divergences explicitly approved by user
+#
+# Each entry overrides the default tolerance for matching rows. Matching rows
+# are tagged "expected" (count toward axis E share-excess only if the looser
+# tolerance is also exceeded). Each entry MUST have approved_by + approved_on.
+# -----------------------------------------------------------------------------
+
+allowlist:
+
+  - asset: income_decomposition_data
+    rule: { type: abs_tol, threshold: 0.5 }
+    reason: "100% rows differ; upstream hh_outros NA-handling fix
+             (sum(a, na.rm) + sum(b, na.rm) vs legacy
+             sum(a + b, na.rm) which dropped rows). MEMORY.md."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: prepared_microdata
+    rule: { type: rel_tol, threshold: 1.0 }
+    reason: "Asset-wide blanket: dois snapshots temporais separados por 77
+             dias com (a) IBGE deflator XLS revisado em 25/Abr/2026
+             (deflator_PNADC_2025.xls vs _2024.xls; CO2_2025/CO2_2024 ≈ 1.05),
+             (b) revisões IBGE em pesos amostrais entre Fev e Abr/2026,
+             (c) extensão temporal (legacy ≤ 202412; novo ≤ 202604+).
+             Aceito até 100% rel_diff em agregados trimestrais; gate é
+             estrutural (schema/levels/rowcount), não numérico."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: poverty_data
+    scope: { columns_match: "^fgt[012]" }
+    rule: { type: abs_tol, threshold: 0.10 }
+    reason: "Cascata do deflator: linhas de pobreza absoluta deflacionadas
+             com novo CO2 → headcount muda até ~25pp em subgrupos pequenos
+             (Indígena/Amarela). abs_tol=0.10 cobre P99 (~0.086) com margem."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: poverty_data
+    scope: { columns_match: "^(n_poor|total_pop)$" }
+    rule: { type: rel_tol, threshold: 1.0 }
+    reason: "Pesos amostrais IBGE revisados; subgrupos pequenos têm rel_diff
+             alto. Magnitude absoluta coerente com revisão populacional
+             (~5-12% em valores de centenas de milhões)."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: poverty_data
+    scope: { column: mean_income_poor }
+    rule: { type: rel_tol, threshold: 0.10 }
+    reason: "Cascading do deflator."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: poverty_data
+    scope: { column: n_obs }
+    rule: { type: abs_tol, threshold: 30000 }
+    reason: "V2005 + revisões IBGE; mesmo padrão de inequality_data.n_obs."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: lorenz_data
+    rule: { type: abs_tol, threshold: 0.05 }
+    reason: "Curvas de Lorenz reagem a mudança de denominador
+             (renda total deflacionada). Cascading do deflator."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: inequality_data
+    rule: { type: rel_tol, threshold: 0.50 }
+    reason: "Cascata do deflator IBGE per-(UF, trimestre): gini/palma/ratios
+             se mexem porque o deflator não é fator constante uniforme.
+             Subgrupos pequenos (Amarela/Indígena) com alta variância
+             amplificam rel_diff. Gate aceita até 50% rel_tol em todos
+             os measures."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: inequality_data
+    scope: { where: "measure %in% c('mean_income', 'median_income')" }
+    rule: { type: abs_tol, threshold: 500 }
+    reason: "Renda em BRL: o deflator novo escala todos os valores;
+             abs_tol=500 (BRL) cobre P99 com margem."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: inequality_data
+    scope: { column: n_obs }
+    rule: { type: abs_tol, threshold: 30000 }
+    reason: "V2005 filter + revisões IBGE em pesos amostrais alteram
+             tamanho de subgrupos; abs_tol=30000 cobre P99 (~21k)."
+    approved_by: rogerio
+    approved_on: 2026-04-26
+
+  - asset: income_shares_data
+    rule: { type: abs_tol, threshold: 0.05 }
+    reason: "Subgrupos pequenos (Amarela/Indígena) com alta variância;
+             samples size effect, não bug."
+    approved_by: rogerio
+    approved_on: 2026-04-26

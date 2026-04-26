@@ -79,35 +79,65 @@ list(
   # Configuration targets
   # --------------------------------------------------------------------------
 
-  tar_target(
-    current_year,
-    as.integer(format(Sys.Date(), "%Y")),
-    cue = tar_cue(mode = "always")
-  ),
-
-  tar_target(
-    current_quarter,
-    ceiling(as.integer(format(Sys.Date(), "%m")) / 3),
-    cue = tar_cue(mode = "always")
-  ),
-
   tar_target(acervo_root,           tar_acervo_root()),
   tar_target(processed_cache_dir,   tar_processed_cache_dir()),
   tar_target(dashboard_data_dir,    tar_dashboard_data_dir()),
 
-  # `dashboard_data_dest` resolves to data/ (live) or data/_new/ (staging)
-  # based on Sys.getenv("PNADC_PIPELINE_MODE"). Env vars are NOT tracked
-  # inputs; cue = always re-evaluates each tar_make() so a session-level
-  # toggle (staging -> live) propagates without manual tar_invalidate().
+  # External-state checker: ONLY target with cue = always. Lists IBGE FTP
+  # (~5-15s for 4 directories) + reads system date. Returns a structured
+  # catalog (see fetch_ibge_ftp_catalog). Downstream consumers
+  # (current_year, current_quarter, *_inventory, *_plan) depend on this
+  # so IBGE-side changes (new year folder, new file, reweight, deflator
+  # update, year/quarter rollover) auto-invalidate without manual
+  # `tar_invalidate(...)`. Sticky cache in processed_cache_dir guards
+  # against IBGE outages.
+  # See plan: 2026-04-26_ftp-listing-watcher.md.
   tar_target(
-    dashboard_data_dest,
-    resolve_dest_dir(dashboard_data_dir),
+    external_state_check,
+    compute_external_state(
+      acervo_root,
+      state_path = file.path(processed_cache_dir, "_ibge_ftp_catalog.json")
+    ),
     cue = tar_cue(mode = "always")
   ),
 
+  # Year/quarter sourced from the always-running checker, so calendar
+  # rollover (Jan 1, quarter end) propagates without manual invalidation.
   tar_target(
-    utils_inequality_path,
-    file.path(tar_dashboard_root(), "R", "utils_inequality.R"),
+    current_year,
+    external_state_check$calendar$year
+  ),
+
+  tar_target(
+    current_quarter,
+    external_state_check$calendar$quarter
+  ),
+
+  # `dashboard_data_dest` resolves to data/ (live) or data/_new/ (staging)
+  # based on Sys.getenv("PNADC_PIPELINE_MODE"). Env vars are NOT tracked
+  # inputs. After Plan 6 (visual-green policy), cutover staging→live
+  # requires manual `tar_invalidate(c("processed_cache_dest","dashboard_data_dest"))`.
+  tar_target(
+    dashboard_data_dest,
+    resolve_dest_dir(dashboard_data_dir)
+  ),
+
+  # PR2: split utils_inequality.R into 3 files, each tracked separately.
+  # A change to (e.g.) measures_poverty.R now invalidates ONLY poverty_asset,
+  # not prepared_microdata_fst or inequality_assets.
+  tar_target(
+    labels_path,
+    file.path(tar_dashboard_root(), "R", "labels.R"),
+    format = "file"
+  ),
+  tar_target(
+    measures_inequality_path,
+    file.path(tar_dashboard_root(), "R", "measures_inequality.R"),
+    format = "file"
+  ),
+  tar_target(
+    measures_poverty_path,
+    file.path(tar_dashboard_root(), "R", "measures_poverty.R"),
     format = "file"
   ),
 
@@ -132,16 +162,40 @@ list(
         file.path(dashboard_data_dir, "income_decomposition_data.rds"),
         file.path(dashboard_data_dir, "poverty_data.rds"),
         file.path(dashboard_data_dir, "state_monthly_data.rds"),
-        file.path(dashboard_data_dir, "geographic_data.rds"),
         file.path(dashboard_data_dir, "brazil_states_sf.rds")
       )
       t0_migration_check(
         paths_to_backup,
         archive_dir = file.path(processed_cache_dir, "_pre_pipeline_backup")
       )
-    },
-    cue = tar_cue(mode = "always")
+    }
   ),
+
+  # --------------------------------------------------------------------------
+  # Camada 1 — Network resources (PR1: hoisted to L1, fetched ONCE)
+  # --------------------------------------------------------------------------
+
+  # INPC factor lookup table: single deflateBR::inpc call covering ALL nominal
+  # dates needed downstream (2021-07 for WB lines, 2024-07 for hhinc_pc, MW
+  # year-mids 1990..current-1). Replaces 4 scattered API calls.
+  tar_target(
+    inpc_factor_table,
+    compute_inpc_factors(deflation_target_date)
+  ),
+
+  # Brazil states geometries from geobr (hoisted from L3 builder).
+  tar_target(
+    brazil_states_sf_raw,
+    fetch_brazil_states_sf(year = 2020L)
+  ),
+
+  # NOTE: sidra_geographic_raw + geographic_fallback_asset removed (this
+  # session). The 3 SIDRA URLs hardcoded in fetch_sidra_geographic never
+  # worked completely (2 of 3 always returned HTTP 400 — wrong tab/var
+  # combos). Hecksher's reference Stata code derives taxadesocup/taxapartic/
+  # nivelocup from microdata directly, and `state_monthly_data.rds`
+  # (state_monthly_asset) already provides them at UF-month granularity.
+  # global.R prioritises state_monthly_data over the fallback file anyway.
 
   # --------------------------------------------------------------------------
   # Camada 1 — acervo custody
@@ -152,34 +206,59 @@ list(
     list_expected_quarters(current_year, current_quarter)
   ),
 
+  # Enumerate ALL 5 visits per year. Pipeline still picks the
+  # default visit (1 / 5 for COVID) when building prepared_microdata_fst,
+  # but the acervo holds all visits for downstream research use.
   tar_target(
     expected_visits,
-    list_expected_visits(current_year)
+    list_expected_visits(current_year, visits = 1L:5L)
   ),
 
-  # NOTE: the deflator XLS is updated yearly by IBGE and must be staged
-  # manually by the user (or downloaded by another process). The pipeline
-  # consumes it via `deflator_path` (a `format = "file"` target that
-  # validates presence). A separate `expected_deflator` target was
-  # previously declared but never consumed by any download path; removed
-  # to avoid suggesting an automated refresh that does not exist.
+  # The deflator XLS is updated yearly by IBGE at
+  # ftp.ibge.gov.br/.../Anual/Microdados/Visita/Documentacao_Geral/
+  # `deflator_download` checks if the latest year is present locally and
+  # fetches it from the FTP if missing. After Plan 6 (visual-green),
+  # detection of new IBGE deflators requires manual
+  # `tar_invalidate("deflator_download")`.
+  tar_target(
+    deflator_download,
+    ensure_deflator_downloaded(current_year - 1L, acervo_root),
+    format = "file"
+  ),
+
+  # Quarterly deflators ship as a single ZIP at
+  # Trimestral/Microdados/Documentacao/Deflatores.zip. Not currently
+  # consumed by the pipeline (build_state_monthly computes rates and
+  # population counts only — no monetary deflation) but kept in sync for
+  # future use and consistency with the user's local acervo structure.
+  tar_target(
+    quarterly_deflator_download,
+    ensure_quarterly_deflators_downloaded(acervo_root)
+  ),
 
   tar_target(
     quarterly_inventory,
-    inventory_local(
-      acervo_subpaths(acervo_root)$quarterly,
-      pattern = "^pnadc_\\d{4}-[1-4]q\\.fst$"
-    ),
-    cue = tar_cue(mode = "always")
+    {
+      # Bind invalidation to external_state_check$acervo$quarterly: when
+      # a .fst is added/removed/touched in the acervo dir, the hash
+      # changes and this inventory re-runs.
+      force(external_state_check)
+      inventory_local(
+        acervo_subpaths(acervo_root)$quarterly,
+        pattern = "^pnadc_\\d{4}-[1-4]q\\.fst$"
+      )
+    }
   ),
 
   tar_target(
     annual_inventory,
-    inventory_local(
-      acervo_subpaths(acervo_root)$annual,
-      pattern = "^pnadc_\\d{4}_visita[1-5]\\.fst$"
-    ),
-    cue = tar_cue(mode = "always")
+    {
+      force(external_state_check)
+      inventory_local(
+        acervo_subpaths(acervo_root)$annual,
+        pattern = "^pnadc_\\d{4}_visita[1-5]\\.fst$"
+      )
+    }
   ),
 
   tar_target(
@@ -188,24 +267,39 @@ list(
     # acervo uses lowercase pnadc_*. Only this inventory needs case-
     # insensitive matching — the canonical basenames in expected_quarters
     # / expected_visits are lowercase.
-    inventory_local(
-      acervo_subpaths(acervo_root)$deflator,
-      pattern = "^deflator_pnadc_\\d{4}\\.xls$",
-      ignore.case = TRUE
-    ),
-    cue = tar_cue(mode = "always")
+    {
+      force(external_state_check)  # auto-invalidate on deflator dir change
+      force(deflator_download)     # ensure download attempted before listing
+      inventory_local(
+        acervo_subpaths(acervo_root)$deflator,
+        pattern = "^deflator_pnadc_\\d{4}\\.xls$",
+        ignore.case = TRUE
+      )
+    }
   ),
 
   # Plan: each expected file is OK (already local) or MISSING (will be
   # downloaded). Republication / reweighting detection is OUT of band — when
   # IBGE reweights, the user removes the local file and reruns tar_make().
+  # Sidecar path: tracks the IBGE-side filename + Last-Modified captured
+  # at last successful download. plan_acervo_actions compares the FTP
+  # catalog NOW against this sidecar to detect IBGE-side updates.
+  # NOT format="file" — file may not exist on first run; load_acervo_sidecar
+  # handles missing path gracefully (returns empty list).
+  tar_target(
+    acervo_sidecar_path,
+    file.path(acervo_root, ".acervo_catalog.json")
+  ),
+
   tar_target(
     quarterly_plan,
     {
       p <- plan_acervo_actions(
         file_type = "quarterly",
         expected = expected_quarters,
-        local_inventory = quarterly_inventory
+        local_inventory = quarterly_inventory,
+        remote_catalog = external_state_check$ftp_catalog$trimestral$dados,
+        catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
       )
       p[, file_type := "quarterly"]
       p[]
@@ -218,7 +312,9 @@ list(
       p <- plan_acervo_actions(
         file_type = "annual",
         expected = expected_visits,
-        local_inventory = annual_inventory
+        local_inventory = annual_inventory,
+        remote_catalog = external_state_check$ftp_catalog$anual$dados,
+        catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
       )
       p[, file_type := "annual"]
       p[]
@@ -230,7 +326,9 @@ list(
     apply_acervo_plan(
       plan = quarterly_plan,
       file_type = "quarterly",
-      dest_dir = acervo_subpaths(acervo_root)$quarterly
+      dest_dir = acervo_subpaths(acervo_root)$quarterly,
+      sidecar = load_acervo_sidecar(acervo_sidecar_path),
+      sidecar_path = acervo_sidecar_path
     ),
     error = "continue"
   ),
@@ -240,7 +338,9 @@ list(
     apply_acervo_plan(
       plan = annual_plan,
       file_type = "annual",
-      dest_dir = acervo_subpaths(acervo_root)$annual
+      dest_dir = acervo_subpaths(acervo_root)$annual,
+      sidecar = load_acervo_sidecar(acervo_sidecar_path),
+      sidecar_path = acervo_sidecar_path
     ),
     error = "continue"
   ),
@@ -252,7 +352,8 @@ list(
       m <- data.table::copy(quarterly_manifest_partial)
       m[, validation_ok := TRUE]
       m[, validation_reason := NA_character_]
-      idx <- which(m$status == "DOWNLOADED_NEW" & !is.na(m$local_path))
+      idx <- which(m$status %in% c("DOWNLOADED_NEW", "DOWNLOADED_UPDATE") &
+                     !is.na(m$local_path))
       for (i in idx) {
         v <- validate_downloaded_file(m$local_path[i], "quarterly", m$year[i])
         if (!isTRUE(v$ok)) {
@@ -273,7 +374,8 @@ list(
       m <- data.table::copy(annual_manifest_partial)
       m[, validation_ok := TRUE]
       m[, validation_reason := NA_character_]
-      idx <- which(m$status == "DOWNLOADED_NEW" & !is.na(m$local_path))
+      idx <- which(m$status %in% c("DOWNLOADED_NEW", "DOWNLOADED_UPDATE") &
+                     !is.na(m$local_path))
       for (i in idx) {
         v <- validate_downloaded_file(m$local_path[i], "annual", m$year[i])
         if (!isTRUE(v$ok)) {
@@ -314,6 +416,7 @@ list(
   tar_target(
     deflator_path,
     {
+      force(deflator_download)  # ensure latest XLS is on disk first
       candidates <- list.files(
         acervo_subpaths(acervo_root)$deflator,
         pattern = "^deflator_pnadc_\\d{4}\\.xls$",
@@ -337,20 +440,76 @@ list(
   # --------------------------------------------------------------------------
 
   # Path destination depends on PNADC_PIPELINE_MODE (env var, not a tracked
-  # input). Resolve via a cue=always sub-target so cutover is automatic.
+  # input). After Plan 6 (visual-green), cutover requires manual
+  # `tar_invalidate(c("processed_cache_dest","dashboard_data_dest"))`.
   tar_target(
     processed_cache_dest,
     if (Sys.getenv("PNADC_PIPELINE_MODE", "staging") == "live")
       processed_cache_dir
     else
-      file.path(processed_cache_dir, "_new"),
-    cue = tar_cue(mode = "always")
+      file.path(processed_cache_dir, "_new")
+  ),
+
+  # PR3: single-pass quarterly stack. The 56 .fst files are read ONCE here;
+  # crosswalk_target and quarterly_recoded both consume this in-memory target
+  # — eliminating the duplicate ~40 GB I/O of the previous design.
+  tar_target(
+    quarterly_stacked,
+    stack_quarterly(quarterly_manifest)
+  ),
+
+  # Crosswalk now derives from the in-memory stack (PR3); previously
+  # re-read 56 .fst inside build_crosswalk_from_quarterly.
+  tar_target(
+    crosswalk_target,
+    build_crosswalk_from_stack(quarterly_stacked)
+  ),
+
+  # PR3: ALL quarterly recoding (employed/informal/sector flags + apply_periods
+  # + V2009 filter) extracted from build_state_monthly into a dedicated target.
+  # state_monthly_asset (and any future quarterly aggregator) consumes this
+  # without re-doing the recodes.
+  tar_target(
+    quarterly_recoded,
+    recode_quarterly(quarterly_stacked, crosswalk_target)
+  ),
+
+  # PR4: annual stack — read 14 visit-1 .fst files once with income variable
+  # harmonization (pre/post-2015 schema reconciliation).
+  tar_target(
+    annual_stacked,
+    stack_annual(annual_manifest)
+  ),
+
+  # PR4: deflator XLS parsed to data.table once per tar_make. Replaces the
+  # in-builder `readxl::read_excel(deflator_path)` call inside deflate_incomes.
+  tar_target(
+    deflator_dt,
+    read_deflator_xls(deflator_path)
+  ),
+
+  # PR4: ALL annual recoding (apply_periods + V2005 filter + deflate +
+  # pc_income components + demographic groupings) in one target. Consumed by
+  # the thin writer prepared_microdata_fst (and could feed inequality/poverty
+  # directly in a future PR).
+  tar_target(
+    annual_recoded,
+    recode_annual(
+      annual_stacked = annual_stacked,
+      crosswalk = crosswalk_target,
+      deflator_dt = deflator_dt,
+      inpc_factor = inpc_factor_at(inpc_factor_table, as.Date("2024-07-01")),
+      labels_path = labels_path
+    )
   ),
 
   # `t0_backup_targets` is referenced via `force()` so that targets'
   # dependency analyser sees an edge. This guarantees the backup
   # actually runs BEFORE prepared_microdata_fst (and the Layer 3 cascade
   # downstream) overwrites any pre-existing live files.
+  # PR4: thin writer — selects dashboard cols from `annual_recoded` and writes
+  # the .fst (kept for external consumers: legacy scripts, dashboard offline
+  # mode, Phase 5 equivalence test).
   tar_target(
     prepared_microdata_fst,
     {
@@ -358,10 +517,8 @@ list(
       dir.create(processed_cache_dest, recursive = TRUE, showWarnings = FALSE)
       dest <- file.path(processed_cache_dest, "prepared_microdata.fst")
       build_prepared_microdata(
-        acervo_manifest = acervo_manifest,
-        deflator_path = deflator_path,
-        dest_path = dest,
-        utils_inequality_path = utils_inequality_path
+        annual_recoded = annual_recoded,
+        dest_path = dest
       )
     },
     format = "file"
@@ -378,7 +535,7 @@ list(
       build_inequality_outputs(
         prepared_microdata_path = prepared_microdata_fst,
         dest_dir = dashboard_data_dest,
-        utils_inequality_path = utils_inequality_path
+        measures_inequality_path = measures_inequality_path
       )
     },
     format = "file"
@@ -390,8 +547,9 @@ list(
       force(t0_backup_targets)
       build_poverty_outputs(
         prepared_microdata_path = prepared_microdata_fst,
+        inpc_factor_table = inpc_factor_table,
         dest_dir = dashboard_data_dest,
-        utils_inequality_path = utils_inequality_path
+        measures_poverty_path = measures_poverty_path
       )
     },
     format = "file"
@@ -402,66 +560,34 @@ list(
     {
       force(t0_backup_targets)
       build_state_monthly(
-        acervo_manifest = acervo_manifest,
+        quarterly_recoded = quarterly_recoded,
         dest_path = file.path(dashboard_data_dest, "state_monthly_data.rds")
       )
     },
     format = "file"
   ),
 
-  # Default cue (`thorough`) suffices: rebuild only when an upstream value
-  # changes (e.g., `dashboard_data_dest` flips on staging->live cutover).
-  # Both builders are network-bound (`geobr::read_state()`,
-  # `apisidra.ibge.gov.br`), so users with intermittent connectivity should
-  # explicitly `tar_invalidate(...)` only when fresh data is desired.
+  # Both builders consume raw network outputs from L1
+  # (brazil_states_sf_raw, sidra_geographic_raw). Network calls happen
+  # exactly once per tar_make in the L1 targets; these are pure transforms.
   tar_target(
     brazil_states_sf_asset,
     build_brazil_states_sf(
+      brazil_states_sf_raw = brazil_states_sf_raw,
       dest_path = file.path(dashboard_data_dest, "brazil_states_sf.rds")
     ),
     format = "file"
   ),
 
-  tar_target(
-    geographic_fallback_asset,
-    build_geographic_fallback(
-      dest_path = file.path(dashboard_data_dest, "geographic_data.rds")
-    ),
-    format = "file"
-  ),
-
-  # --------------------------------------------------------------------------
-  # SIDRA inputs — external files produced by GitHub Actions, tracked here
-  # so dashboard_validation invalidates when they change.
-  # --------------------------------------------------------------------------
-
-  tar_target(
-    sidra_series_metadata_qs2,
-    file.path(dashboard_data_dir, "series_metadata.qs2"),
-    format = "file",
-    error = "continue"   # may not exist on first run
-  ),
-
-  tar_target(
-    sidra_monthly_qs2,
-    file.path(dashboard_data_dir, "monthly_sidra.qs2"),
-    format = "file",
-    error = "continue"
-  ),
-
-  tar_target(
-    sidra_rolling_qs2,
-    file.path(dashboard_data_dir, "rolling_quarters.qs2"),
-    format = "file",
-    error = "continue"
-  ),
-
-  tar_target(
-    sidra_deseasonalized_qs2,
-    file.path(dashboard_data_dir, "deseasonalized_cache.qs2"),
-    format = "file",
-    error = "continue"
-  ),
+  # geographic_fallback_asset removed: see NOTE in L1 section above.
+  #
+  # NOTE: SIDRA `.qs2` assets are NOT tracked here. They're produced by
+  # the GitHub Actions workflow `.github/workflows/sidra-daily.yml` and
+  # fetched at dashboard startup via `httr2` from the GitHub release
+  # `data-latest`. They never enter this DAG — neither as inputs nor as
+  # outputs. (Earlier versions tracked them as `format = "file"` targets
+  # but no downstream target consumed those values, so they were
+  # vestigial.)
 
   # --------------------------------------------------------------------------
   # Validation gate: read every Layer-3 .rds and check schema + row counts.
@@ -482,11 +608,9 @@ list(
                                           inequality_assets, value = TRUE),
         poverty_data              = poverty_asset,
         state_monthly_data        = state_monthly_asset,
-        brazil_states_sf          = brazil_states_sf_asset,
-        geographic_data           = geographic_fallback_asset
+        brazil_states_sf          = brazil_states_sf_asset
       )
       validate_all_assets(asset_paths)
-      asset_paths
     }
   ),
 
@@ -521,15 +645,34 @@ list(
         n_ok         = sum(acervo_manifest$status == "OK", na.rm = TRUE),
         n_downloaded = sum(acervo_manifest$status == "DOWNLOADED_NEW",
                            na.rm = TRUE),
+        n_updated    = sum(acervo_manifest$status == "DOWNLOADED_UPDATE",
+                           na.rm = TRUE),
         n_missing    = sum(acervo_manifest$status == "MISSING", na.rm = TRUE),
+        n_missing_upstream = sum(acervo_manifest$status == "MISSING_UPSTREAM",
+                                  na.rm = TRUE),
         n_failed     = n_failed,
         n_invalid    = n_invalid,
         validation   = vapply(dashboard_validation,
                               function(x) isTRUE(x$ok), logical(1L)),
         mode         = Sys.getenv("PNADC_PIPELINE_MODE", "staging")
       )
-    },
-    cue = tar_cue(mode = "always")
+    }
+  ),
+
+  # --------------------------------------------------------------------------
+  # Final step: deploy to shinyapps.io (gated by mode + env + creds + integrity)
+  # --------------------------------------------------------------------------
+  #
+  # Runs ONLY when pipeline_done invalidates (i.e. some upstream rebuilt).
+  # When the DAG is fully cached, dashboard_deployed stays cached too — no
+  # spurious redeploys. See R/tar-deploy.R for the gate logic.
+  tar_target(
+    dashboard_deployed,
+    deploy_dashboard_if_eligible(
+      pipeline_done   = pipeline_done,
+      dashboard_root  = tar_dashboard_root(),
+      auto_deploy_env = Sys.getenv("PNADC_AUTO_DEPLOY", "1")
+    )
   )
 
 )

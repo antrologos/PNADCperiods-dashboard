@@ -183,15 +183,11 @@ dashboard_asset_specs <- list(
     required_cols = c("uf_code", "uf_abbrev", "uf_name", "geometry"),
     # Brazil has 27 federal units: 26 states + Distrito Federal.
     min_rows = 27L
-  ),
-  geographic_data = list(
-    required_cols = c("uf_code", "anomesfinaltrimmovel", "value", "indicator"),
-    # SIDRA fetch returning an empty stub is operationally a degraded
-    # state — the geographic tab depends on this fallback when the
-    # microdata-based state_monthly_data is unavailable. Refuse silent
-    # empties and force the user to investigate.
-    min_rows = 1L
   )
+  # geographic_data spec removed: see tar-network.R NOTE. The fallback target
+  # was deleted because the hardcoded SIDRA URLs never worked completely;
+  # state_monthly_data.rds (computed from microdata) is the canonical source
+  # for the geographic tab.
 )
 
 #' Validate a dashboard .rds asset against its expected schema.
