@@ -88,17 +88,24 @@ The result: the default visnetwork shows ~45 of 45 nodes as blue
 "outdated" while `tar_make()` reports 1 completed + 44 skipped. The
 visualization is pessimistic; the execution is the truth.
 
-Use the helper instead — colors nodes by last-run progress only:
+Use the helpers instead:
 
 ```r
 source("R/tar-viz.R")
+
+# In RStudio Viewer pane — Sugiyama left-to-right layout, fills pane:
 tar_visnetwork_honest()
-# equivalent to: targets::tar_visnetwork(outdated = FALSE)
+
+# Better: render to a standalone HTML and open in browser (full window):
+tar_visnetwork_save()  # opens dag.html in default browser
 ```
 
 After a normal `tar_make()` you'll see `external_state_check` as
 "completed" and all 44 downstream nodes as "skipped" (success, cached).
-No misleading blue cascade.
+No misleading blue cascade. The Sugiyama layout spreads nodes
+left-to-right so the graph uses the full canvas instead of clumping in
+a corner — open the standalone HTML in a browser for unconstrained
+zoom + drag.
 
 ## Auto-detection of external changes (FTP-based)
 
