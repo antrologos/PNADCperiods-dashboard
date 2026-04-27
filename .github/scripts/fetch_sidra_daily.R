@@ -48,7 +48,7 @@ TAG         <- "data-latest"
 OUTDIR      <- "output"
 MAX_RETRY   <- 3L
 BACKOFF_SECONDS          <- c(10L, 60L, 180L)
-STALENESS_THRESHOLD_DAYS <- 90L
+STALENESS_THRESHOLD_DAYS <- 100L
 IBGE_FTP_PROBE_URL <- "https://ftp.ibge.gov.br/Trabalho_e_Rendimento/Pesquisa_Nacional_por_Amostra_de_Domicilios_continua/Trimestral/Microdados/"
 HTTP_TIMEOUT_SECONDS <- 15L
 
@@ -139,6 +139,37 @@ tryCatch({
   if (is.null(rolling_quarters) || nrow(rolling_quarters) == 0L) {
     stop("[fetch_rq] returned empty data.table")
   }
+
+  # ---- Step 2.5: drop trailing all-NA-PNADC rows ----
+  # When SIDRA publishes IPCA/INPC for a month before PNADC (typical in
+  # the first week of every month), merge(..., all=TRUE) inside
+  # fetch_sidra_rolling_quarters() yields trailing rows where only the
+  # price-index columns are filled and every PNADC column is NA.
+  # mensalize_sidra_series() in PNADCperiods <= 0.1.1 then produces
+  # numerically plausible but spurious mensalized values for those rows.
+  # Drop them defensively. Idempotent: when PNADC catches up, the filter
+  # is a no-op.
+  cat("Step 2.5: filtering trailing all-NA-PNADC rows\n")
+  setorder(rolling_quarters, anomesfinaltrimmovel)
+  # NOTE: .price_cols is hard-coded to the four IBGE price indices
+  # currently exposed by PNADCperiods. If new non-PNADC columns are
+  # added upstream (e.g., a different deflator), update this list.
+  .price_cols <- c("anomesfinaltrimmovel", "mesnotrim",
+                   "ipca100dez1993", "ipcavarmensal",
+                   "inpc100dez1993", "inpcvarmensal")
+  .pnadc_cols <- setdiff(names(rolling_quarters), .price_cols)
+  .has_pnadc <- rolling_quarters[, rowSums(!is.na(.SD)) > 0,
+                                   .SDcols = .pnadc_cols]
+  .last_idx <- max(which(.has_pnadc))
+  if (!is.na(.last_idx) && .last_idx < nrow(rolling_quarters)) {
+    .n_dropped <- nrow(rolling_quarters) - .last_idx
+    cat(sprintf("  Dropped %d trailing all-NA-PNADC rows (last PNADC: %s)\n",
+                .n_dropped,
+                rolling_quarters[.last_idx, anomesfinaltrimmovel]))
+    rolling_quarters <- rolling_quarters[seq_len(.last_idx)]
+  }
+  rm(.price_cols, .pnadc_cols, .has_pnadc, .last_idx)
+
   qs2::qs_save(rolling_quarters, file.path(OUTDIR, "rolling_quarters.qs2"))
 
   # ---- Step 3: mensalize ----
