@@ -241,6 +241,37 @@ validate_dashboard_asset <- function(path, asset_id) {
   list(ok = TRUE, reason = NA_character_)
 }
 
+# ------------------------------------------------------------------------------
+# Detector: PNADC anual visita simplified (e.g. 2025 visita 1)
+# ------------------------------------------------------------------------------
+
+#' Detect whether an annual visit's microdata uses the simplified income schema.
+#'
+#' IBGE published PNADC anual 2025 visita 1 (2026-04-24) without VD5008 and
+#' without the V5*A2 module (BPC, Bolsa Família, previdência, seguro
+#' desemprego, doações, aluguéis, juros, bolsas). VD4019 and VD4020 (renda
+#' do trabalho) remain. Any year matching this pattern cannot produce a
+#' meaningful hhinc_pc — downstream income/poverty assets must filter it out.
+#'
+#' Criterion is structural (not a year-whitelist): auto-detects the return
+#' to the full schema when IBGE catches up (e.g. visita 5 in 2027).
+#'
+#' @param d data.table with lower-case column names (after the harmonizer in
+#'   `tar-stack.R::load_annual_with_income_harmonization`).
+#' @return logical(1). TRUE when the schema is simplified.
+detect_simplified_annual_year <- function(d) {
+  cols <- names(d)
+  # vd5008 is the load-bearing input for hhinc_pc. If the column is missing
+  # or 100% NA, the legacy `fifelse(is.na(vd5008), 0, ...)` collapses the
+  # whole year to zero — so flag on this alone (don't require V5* also
+  # missing): the year is unusable for income aggregates either way.
+  v5008_unusable <- !"vd5008" %in% cols || all(is.na(d[["vd5008"]]))
+  v5_sources <- c("v5001a2", "v5002a2", "v5003a2", "v5004a2",
+                  "v5005a2", "v5006a2", "v5007a2", "v5008a2")
+  v5_absent <- sum(!v5_sources %in% cols)
+  v5008_unusable || v5_absent >= 4L
+}
+
 #' Aggregate validator over a named list of (path, asset_id).
 validate_all_assets <- function(asset_paths) {
   out <- vector("list", length(asset_paths))

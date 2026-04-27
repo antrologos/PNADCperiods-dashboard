@@ -180,6 +180,96 @@ test_that("PR5: vectorized fgt_all reproduces scalar output (toy regression)", {
                tolerance = 1e-12)
 })
 
+# ------------------------------------------------------------------------------
+# 2025 visita 1 simplified income module (regression: hhinc_pc=0 cascade)
+# ------------------------------------------------------------------------------
+
+test_that("deflate_incomes preserves NA in years flagged as simplified", {
+  source_pipeline_R()
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("readxl")
+
+  # Synthetic deflator covering both 2024 (full) and 2025 (simplified)
+  defl <- data.table::CJ(Ano = 2024L:2025L, Trimestre = 1L:4L, UF = 11L:53L)
+  defl_path <- tempfile(fileext = ".xlsx")
+  write_synthetic_deflator(defl, defl_path)
+  on.exit(unlink(defl_path), add = TRUE)
+
+  # Mixed microdata: 2024 with vd5008 valid + flag TRUE; 2025 with vd5008
+  # NA + flag FALSE (mirrors the IBGE 2025 visita 1 simplified module).
+  d <- data.table::data.table(
+    Ano = c(rep(2024L, 4L), rep(2025L, 4L)),
+    Trimestre = rep(1L:4L, 2L),
+    UF = rep(35L, 8L),
+    vd5008 = c(c(1000, 1500, 2000, 2500), rep(NA_real_, 4L)),
+    vd4019 = c(c(800, 1200, 1600, 2000), c(900, 1300, 1700, 2100)),
+    vd4020 = c(c(800, 1200, 1600, 2000), c(900, 1300, 1700, 2100)),
+    income_module_complete = c(rep(TRUE, 4L), rep(FALSE, 4L))
+  )
+
+  out <- deflate_incomes(d, read_deflator_xls(defl_path), inpc_factor = 1.05)
+  out_2024 <- out[Ano == 2024L]
+  out_2025 <- out[Ano == 2025L]
+
+  # 2024: legacy behaviour preserved (no NA in hhinc_pc_nominal)
+  expect_true(all(!is.na(out_2024$hhinc_pc_nominal)))
+  expect_true(all(out_2024$hhinc_pc_nominal > 0))
+  expect_true(all(!is.na(out_2024$hhinc_pc)))
+
+  # 2025: NA propagates (no silent zero-cascade)
+  expect_true(all(is.na(out_2025$hhinc_pc_nominal)))
+  expect_true(all(is.na(out_2025$hhinc_pc)))
+  expect_false(any(out_2025$hhinc_pc == 0, na.rm = TRUE))
+})
+
+test_that("build_inequality_outputs filters income_module_complete == TRUE", {
+  source_pipeline_R()
+  skip_if(!exists("build_inequality_outputs"),
+          "build_inequality_outputs not loaded")
+  body_src <- paste(deparse(body(build_inequality_outputs)), collapse = "\n")
+  expect_match(body_src,
+               "income_module_complete\\s*==\\s*TRUE",
+               info = "build_inequality_outputs must drop simplified-module years")
+})
+
+test_that("build_poverty_outputs filters income_module_complete == TRUE", {
+  source_pipeline_R()
+  skip_if(!exists("build_poverty_outputs"),
+          "build_poverty_outputs not loaded")
+  body_src <- paste(deparse(body(build_poverty_outputs)), collapse = "\n")
+  expect_match(body_src,
+               "income_module_complete\\s*==\\s*TRUE",
+               info = "build_poverty_outputs must drop simplified-module years")
+})
+
+test_that("legacy-behaviour regression: 2024 hhinc_pc_nominal unchanged", {
+  # Same numeric output as before the patch when income_module_complete==TRUE.
+  # Mirrors the legacy single-line `fifelse(is.na(vd5008), 0, ...)` exactly.
+  source_pipeline_R()
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("readxl")
+
+  defl <- data.table::CJ(Ano = 2024L, Trimestre = 1L:4L, UF = 11L:53L)
+  defl_path <- tempfile(fileext = ".xlsx")
+  write_synthetic_deflator(defl, defl_path)
+  on.exit(unlink(defl_path), add = TRUE)
+
+  # Mix of valid vd5008 and explicit NA — legacy behaviour for the NA case
+  # is hhinc_pc_nominal = 0; we must reproduce it exactly.
+  d <- data.table::data.table(
+    Ano = rep(2024L, 4L),
+    Trimestre = 1L:4L,
+    UF = rep(35L, 4L),
+    vd5008 = c(1234.5, NA_real_, 9876.0, 0),
+    vd4019 = c(1000, NA_real_, 1500, 0),
+    vd4020 = c(1000, NA_real_, 1500, 0),
+    income_module_complete = rep(TRUE, 4L)
+  )
+  expected <- c(1234.5, 0, 9876.0, 0)  # NA -> 0, others as numeric
+  out <- deflate_incomes(d, read_deflator_xls(defl_path), inpc_factor = 1.0)
+  expect_equal(out$hhinc_pc_nominal, expected, tolerance = 1e-12)
+})
+
 test_that("PR4: build_prepared_microdata is a thin writer (no recode logic)", {
   source_pipeline_R()
   skip_if(!exists("build_prepared_microdata"), "build_prepared_microdata not loaded")

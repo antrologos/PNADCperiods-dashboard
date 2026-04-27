@@ -44,6 +44,7 @@ build_prepared_microdata <- function(annual_recoded, dest_path) {
     "hhinc_pc", "rendaTrab_ha_pc", "rendaPrevid_pc", "rendaBPC_pc",
     "rendaBolsaFam_pc", "rendaOutProgs_pc", "rendaSegDesemp_pc",
     "rendaAlugueis_pc", "rendaOutros_pc", "hhinc_pc_components",
+    "income_module_complete",
     "sexo", "raca", "faixa_educ", "regiao", "uf_abbrev",
     "urbano", "faixa_idade", "V2009"
   )
@@ -99,10 +100,24 @@ deflate_incomes <- function(d, deflator_dt, inpc_factor) {
   data.table::setkeyv(d, c("Ano", "Trimestre", "UF"))
   d <- deflator[d]
 
+  # Backwards compatibility: callers that pre-date the simplified-module
+  # detector (legacy unit tests, ad-hoc scripts) won't have the flag. Treat
+  # absence as "full module" so they keep the legacy NA -> 0 behaviour.
+  if (!"income_module_complete" %in% names(d)) {
+    d[, income_module_complete := TRUE]
+  }
+
   message(sprintf("INPC adjustment factor (mid-2024 -> %s): %.4f",
                   deflation_target_date, inpc_factor))
 
-  d[, hhinc_pc_nominal := data.table::fifelse(is.na(vd5008), 0, as.numeric(vd5008))]
+  # Years with the full income module: keep legacy behaviour (NA -> 0).
+  # Years flagged as simplified (e.g. PNADC anual 2025 visita 1) lack
+  # VD5008 entirely; propagate NA so hhinc_pc is NA, weighted_gini /
+  # fgt_all return NA, and the downstream filter excludes the year.
+  d[income_module_complete == TRUE,
+    hhinc_pc_nominal := data.table::fifelse(is.na(vd5008), 0, as.numeric(vd5008))]
+  d[income_module_complete == FALSE,
+    hhinc_pc_nominal := NA_real_]
   d[, hhinc_pc := hhinc_pc_nominal * CO2 * inpc_factor]
   d[, vd4019_num := data.table::fifelse(is.na(vd4019), 0, as.numeric(vd4019))]
   d[, vd4020_num := data.table::fifelse(is.na(vd4020), 0, as.numeric(vd4020))]
@@ -222,6 +237,12 @@ build_inequality_outputs <- function(prepared_microdata_path,
   # rationale as Plan 5 fix for build_prepared_microdata.
   source(measures_inequality_path)
   d <- fst::read_fst(prepared_microdata_path, as.data.table = TRUE)
+  # Years flagged as simplified by detect_simplified_annual_year() (e.g.
+  # PNADC anual 2025 visita 1 — published without VD5008 + V5*A2) cannot
+  # produce a meaningful hhinc_pc. Drop them so inequality_data,
+  # income_shares_data, lorenz_data, and income_decomposition_data omit
+  # the year entirely (rather than emitting NA / degenerate Lorenz lines).
+  d <- d[income_module_complete == TRUE]
 
   breakdown_specs <- list(
     list(type = "overall",      col = NULL),
@@ -438,6 +459,10 @@ build_poverty_outputs <- function(prepared_microdata_path,
   # Plan 5 fix for build_prepared_microdata).
   source(measures_poverty_path)
   d <- fst::read_fst(prepared_microdata_path, as.data.table = TRUE)
+  # Same simplified-module filter as build_inequality_outputs: drop years
+  # where hhinc_pc is NA by design (e.g. PNADC anual 2025 visita 1)
+  # to avoid emitting fgt0 = 1.0 (everyone below line) / NA poverty rates.
+  d <- d[income_module_complete == TRUE]
 
   # WB poverty lines: deflate from 2021-07 PPP-anchored values.
   # Replaces `get_wb_poverty_lines(reference_date = ...)` to avoid a

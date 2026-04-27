@@ -152,6 +152,18 @@ load_annual_with_income_harmonization <- function(paths) {
       old <- intersect(vars_pre, names(dt))
       if (length(old)) dt[, (old) := NULL]
     }
+    # Flag year-level income-module completeness (e.g. PNADC anual 2025
+    # visita 1 was published without VD5008 + V5*A2). Propagated as a
+    # constant column so the harmonized stack carries it into recode_annual
+    # and the .fst — downstream income/poverty builders filter on it.
+    is_simplified <- detect_simplified_annual_year(dt)
+    dt[, income_module_complete := !is_simplified]
+    if (is_simplified) {
+      message(sprintf(
+        "Annual %d: simplified income module detected (no VD5008 / V5*A2); will be excluded from inequality and poverty assets.",
+        yr
+      ))
+    }
     dt
   }), fill = TRUE)
 }

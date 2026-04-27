@@ -97,6 +97,31 @@ test_that("validate_dashboard_asset rejects lorenz_data missing p+lorenz columns
   unlink(tmp)
 })
 
+# ------------------------------------------------------------------------------
+# detect_simplified_annual_year() — IBGE 2025 visita 1 simplified module
+# ------------------------------------------------------------------------------
+
+test_that("detect_simplified_annual_year flags 2025 simplified schema", {
+  source_pipeline_R()
+  d <- fixture_annual_microdata(2025L, schema = "simplified_2025")
+  expect_true(detect_simplified_annual_year(d))
+})
+
+test_that("detect_simplified_annual_year accepts full schema (2024)", {
+  source_pipeline_R()
+  d <- fixture_annual_microdata(2024L, schema = "full")
+  expect_false(detect_simplified_annual_year(d))
+})
+
+test_that("detect_simplified_annual_year flags 100% NA vd5008 even when V5xxx present", {
+  # Catches a degenerate case where IBGE keeps the column header but ships
+  # all-NA values (would yield hhinc_pc = 0 via the legacy fifelse).
+  source_pipeline_R()
+  d <- fixture_annual_microdata(2024L, schema = "full")
+  d[, vd5008 := NA_real_]
+  expect_true(detect_simplified_annual_year(d))
+})
+
 test_that("validate_all_assets aborts with detailed message on failure", {
   source_pipeline_R()
   good_path <- tempfile(fileext = ".rds")
