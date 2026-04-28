@@ -1,16 +1,7 @@
-# ==============================================================================
-# tar-stack.R — Layer 2 single-pass stackers
-#
-# Responsibilities (PR3 of DAG re-architecture):
-#  - stack_quarterly: read all 56 quarterly .fst files into a single
-#    in-memory data.table target. With the full column superset
-#    (`quarterly_required_vars`), this enables BOTH crosswalk_target and
-#    state_monthly_asset to consume the same stack — eliminating the previous
-#    duplicate ~40 GB I/O / ~6-8 min of redundant reads.
-#  - build_crosswalk_from_stack: derives the period crosswalk from the
-#    in-memory stack (no .fst re-read; PNADCperiods does its own column
-#    subsetting).
-# ==============================================================================
+# ==== Layer 2 single-pass stackers ============================================
+# stack_quarterly reads all 56 quarterly .fst once into an in-memory data.table.
+# stack_annual does the same for the 14 annual visit-1 files, with pre/post-2015
+# income variable harmonization.
 
 #' Stack all quarterly PNADC .fst files into a single data.table.
 #'
@@ -27,15 +18,18 @@
 stack_quarterly <- function(quarterly_manifest,
                             cols = quarterly_required_vars) {
   set_fst_threads(2L)
-  qf <- quarterly_manifest[
+  quarterly_files <- quarterly_manifest[
     status %in% c("OK", "DOWNLOADED_NEW", "DOWNLOADED_UPDATE") &
       !is.na(local_path)
   ]
-  if (!nrow(qf)) stop("No quarterly files available to stack.", call. = FALSE)
+  if (!nrow(quarterly_files)) {
+    stop("No quarterly files available to stack.", call. = FALSE)
+  }
 
-  message(sprintf("Loading %d quarterly files (single stack)...", nrow(qf)))
+  message(sprintf("Loading %d quarterly files (single stack)...",
+                  nrow(quarterly_files)))
   out <- data.table::rbindlist(
-    lapply(qf$local_path, function(p) {
+    lapply(quarterly_files$local_path, function(p) {
       avail <- intersect(cols, names(fst::read_fst(p, from = 1L, to = 1L)))
       fst::read_fst(p, columns = avail, as.data.table = TRUE)
     }),
@@ -46,22 +40,7 @@ stack_quarterly <- function(quarterly_manifest,
   out
 }
 
-#' Build the period crosswalk from the in-memory quarterly stack.
-#'
-#' Renamed from `build_crosswalk_from_quarterly` (which took a manifest and
-#' re-read the 56 .fst). PR3 makes it consume the already-stacked data.table,
-#' so a tar_make() pass reads the .fst exactly once.
-#'
-#' @param quarterly_stacked data.table from `stack_quarterly`
-#' @return crosswalk data.table (output of `pnadc_identify_periods`)
-build_crosswalk_from_stack <- function(quarterly_stacked) {
-  build_crosswalk(quarterly_stacked)
-}
-
-
-# ==============================================================================
-# Annual stack (PR4)
-# ==============================================================================
+# ==== Annual stack ============================================================
 
 #' Stack all annual visit .fst files into a single harmonized data.table.
 #'
@@ -73,19 +52,20 @@ build_crosswalk_from_stack <- function(quarterly_stacked) {
 #' @return data.table of harmonized annual microdata (~5.7M rows × ~25 cols)
 stack_annual <- function(annual_manifest) {
   set_fst_threads(2L)
-  af <- annual_manifest[
+  annual_files <- annual_manifest[
     status %in% c("OK", "DOWNLOADED_NEW", "DOWNLOADED_UPDATE") &
       !is.na(local_path)
   ]
-  af[, default_visit := get_default_visit(year)]
+  annual_files[, default_visit := get_default_visit(year)]
   # Pick only the default visit per year for the dashboard pipeline,
   # even when the acervo holds all 5 visits (post-FTP-watcher rollout).
-  af <- af[period == default_visit]
-  if (!nrow(af)) {
+  annual_files <- annual_files[period == default_visit]
+  if (!nrow(annual_files)) {
     stop("No annual files available after visit filter.", call. = FALSE)
   }
-  message(sprintf("Loading %d annual visits (single stack)...", nrow(af)))
-  load_annual_with_income_harmonization(af$local_path)
+  message(sprintf("Loading %d annual visits (single stack)...",
+                  nrow(annual_files)))
+  load_annual_with_income_harmonization(annual_files$local_path)
 }
 
 
@@ -97,6 +77,19 @@ stack_annual <- function(annual_manifest) {
 # split — and the union/coalesce logic on the 8 income sources at the 2015
 # transition — lives here because it's a stacking concern, not a builder.
 
+#' Income harmonization rule (PNADC anual visits):
+#'   - 2012-2014: pre-2015 vars (v500*) only — remap into post-2015 names
+#'                (v5*a2) via direct rename or Sum() of multiple sources.
+#'   - 2015:      both schemas present in IBGE microdata — coalesce per
+#'                target var via Sum() (sum-skipping-NA across overlapping
+#'                inputs).
+#'   - 2016+:     post-2015 vars (v5*a2) only — kept as-is.
+#' Output schema is always the post-2015 names so downstream builders
+#' (recode_annual, build_inequality_outputs, ...) see a stable set of cols.
+#' `is_simplified_annual_year` flags years where IBGE published a stripped
+#' income module (PNADC 2025 visita 1 has no VD5008/V5*A2); those rows are
+#' tagged `income_module_complete = FALSE` and excluded from the inequality
+#' and poverty assets downstream.
 load_annual_with_income_harmonization <- function(paths) {
   vars_pre <- c("v500111", "v500211", "v500311", "v500411",
                 "v500511", "v500611", "v500711", "v500811",

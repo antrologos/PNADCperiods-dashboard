@@ -1,111 +1,64 @@
 # ==============================================================================
-# tar-validation.R — schema and sanity checks for downloaded acervo files
-# and final dashboard assets.
-#
-# Two-tier validation:
-#  - validate_downloaded_file(): post-download check on a single .fst, sample-
-#    based, with cardinality range check.
-#  - validate_dashboard_asset(): final check that an .rds shaped for the
-#    dashboard has the expected schema and date range.
+# tar-validation.R — schema/sanity checks for downloaded acervo files and
+# dashboard assets. Failures rename .fst to .INVALID (quarantine, not delete).
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Sample-based validation of a downloaded .fst
-# ------------------------------------------------------------------------------
-
-#' Validate a downloaded .fst file.
-#'
-#' Reads only the first and last 1000 rows; checks PNADC structural validity
-#' and a coarse cardinality range. On failure, the file is renamed to
-#' <path>.INVALID (quarantined, not deleted).
-#'
-#' @param path absolute path of the .fst
-#' @param file_type "quarterly" or "annual"
-#' @param expected_year integer year the file should have
-#' @return list(ok = TRUE/FALSE, reason = character, n_rows = integer)
+# ==== Sample-based validation of a downloaded .fst ============================
+# Reads only first 1000 rows; checks cardinality range, Ano/Trimestre values,
+# and PNADC structural validity. Cheap fast checks first; quarantine on fail.
 validate_downloaded_file <- function(path, file_type, expected_year) {
-  stopifnot(file_type %in% c("quarterly", "annual"))
-
-  if (!file.exists(path)) {
+  if (!file.exists(path))
     return(list(ok = FALSE, reason = "file not found", n_rows = 0L))
-  }
 
   meta <- tryCatch(fst::metadata_fst(path), error = function(e) NULL)
-  if (is.null(meta)) {
-    return(quarantine(path, "could not read fst metadata", n_rows = 0L))
-  }
-  n_total <- as.integer(meta$nrOfRows)
-  exp <- expected_n_rows[[file_type]]
-  if (n_total < ceiling(0.5 * exp$median)) {
-    return(quarantine(
-      path,
-      sprintf("cardinality %d below 0.5 * median %d (likely truncated ZIP)",
-              n_total, exp$median),
-      n_rows = n_total
-    ))
-  }
+  if (is.null(meta))
+    return(quarantine(path, "could not read fst metadata", 0L))
 
-  # Sample begin and end
+  n_total <- as.integer(meta$nrOfRows)
+  exp_med <- expected_n_rows[[file_type]]$median
+  if (n_total < ceiling(0.5 * exp_med))
+    return(quarantine(path, sprintf(
+      "cardinality %d below 0.5 * median %d (likely truncated ZIP)",
+      n_total, exp_med), n_total))
+
   head_rows <- tryCatch(
     fst::read_fst(path, from = 1L, to = min(1000L, n_total),
                   as.data.table = TRUE),
-    error = function(e) NULL
-  )
-  if (is.null(head_rows)) {
-    return(quarantine(path, "could not read head sample", n_rows = n_total))
-  }
+    error = function(e) NULL)
+  if (is.null(head_rows))
+    return(quarantine(path, "could not read head sample", n_total))
 
-  # Year check
   ano_col <- intersect(c("Ano", "ano"), names(head_rows))
   if (length(ano_col)) {
     yrs <- unique(as.integer(head_rows[[ano_col[1L]]]))
-    if (!expected_year %in% yrs) {
-      return(quarantine(
-        path,
-        sprintf("Ano column has %s; expected %d",
-                paste(yrs, collapse = ","), expected_year),
-        n_rows = n_total
-      ))
-    }
+    if (!expected_year %in% yrs)
+      return(quarantine(path, sprintf("Ano column has %s; expected %d",
+        paste(yrs, collapse = ","), expected_year), n_total))
   }
 
-  # Trimestre check (quarterly only)
   if (file_type == "quarterly") {
     tri_col <- intersect(c("Trimestre", "trimestre"), names(head_rows))
     if (length(tri_col)) {
       tris <- unique(as.integer(head_rows[[tri_col[1L]]]))
-      if (!all(tris %in% 1:4)) {
-        return(quarantine(
-          path,
-          sprintf("Trimestre column has %s outside 1-4",
-                  paste(tris, collapse = ",")),
-          n_rows = n_total
-        ))
-      }
+      if (!all(tris %in% 1:4))
+        return(quarantine(path, sprintf(
+          "Trimestre column has %s outside 1-4",
+          paste(tris, collapse = ",")), n_total))
     }
   }
 
-  # PNADCperiods structural validation on the head sample.
-  # The package returns list(valid, issues, n_rows, n_cols, join_keys_available).
-  # Schema mismatches do NOT quarantine (PNADCperiods may be stricter than the
-  # pipeline's minimal vars list); instead, the issues are echoed to message()
-  # and surfaced via the manifest's validation_reason column when relevant.
+  # PNADCperiods structural check — non-fatal: emit a warning, don't quarantine.
+  # Package may be stricter than the pipeline's minimal vars list.
   vchk <- tryCatch(
     PNADCperiods::validate_pnadc(head_rows, stop_on_error = FALSE),
-    error = function(e) list(valid = FALSE, issues = list(error = conditionMessage(e)))
-  )
+    error = function(e) list(valid = FALSE,
+                             issues = list(error = conditionMessage(e))))
   if (!isTRUE(vchk$valid)) {
-    msg <- if (is.list(vchk$issues) && length(vchk$issues)) {
-      paste(
-        vapply(names(vchk$issues), function(nm) {
-          paste0(nm, "=", paste(as.character(vchk$issues[[nm]]),
-                                collapse = ","))
-        }, character(1L)),
-        collapse = "; "
-      )
-    } else {
-      "validate_pnadc returned non-ok result"
-    }
+    msg <- if (is.list(vchk$issues) && length(vchk$issues))
+      paste(vapply(names(vchk$issues), function(nm)
+        paste0(nm, "=", paste(as.character(vchk$issues[[nm]]), collapse = ",")),
+        character(1L)), collapse = "; ")
+      else "validate_pnadc returned non-ok result"
     message("validate_pnadc warning for ", basename(path), ": ", msg)
   }
 

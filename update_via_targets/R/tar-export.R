@@ -1,19 +1,9 @@
-# ==============================================================================
-# tar-export.R — atomic export of dashboard assets + migration safety gate
-#
-# During the 4-week coexistence window, set PNADC_PIPELINE_MODE = "staging"
-# to make builders write to <dest>/_new/ instead of the live <dest>/. This
-# allows the migration equivalence test to compare old vs. new outputs
-# without disturbing the live dashboard.
-#
-# Once equivalence passes, set PNADC_PIPELINE_MODE = "live" (or unset) so
-# subsequent tar_make() runs write directly to the live folder.
-# ==============================================================================
+# ==== Atomic export + migration safety gate ===================================
+# PNADC_PIPELINE_MODE = "staging" writes to <dest>/_new/ (default during the
+# 4-week coexistence window). Set it to "live" for direct writes after the
+# equivalence test passes.
 
-#' Resolve where Layer 3 outputs should be written (staging or live).
-#'
-#' @param base directory like PNADCperiods-dashboard/data
-#' @return base or base/_new/
+# resolve_dest_dir: <base> or <base>/_new/ depending on PNADC_PIPELINE_MODE.
 resolve_dest_dir <- function(base) {
   mode <- Sys.getenv("PNADC_PIPELINE_MODE", "staging")
   out <- if (mode == "live") base else file.path(base, "_new")
@@ -21,15 +11,9 @@ resolve_dest_dir <- function(base) {
   out
 }
 
-#' Pre-pipeline backup of any pre-existing dashboard assets and Layer 2 cache.
-#'
-#' Idempotent: skips a backup if an identical (md5-equal) backup already
-#' exists. Writes a small JSON manifest under <archive>/backup_log.json
-#' for auditing.
-#'
-#' @param paths character vector of files to back up
-#' @param archive_dir destination archive directory
-#' @return character vector of backup paths (NA for files not present)
+# t0_migration_check: idempotent backup of pre-existing dashboard assets and
+# Layer 2 cache. Skips when an md5-equal backup already exists; appends a
+# JSON audit log under <archive>/backup_log.json.
 t0_migration_check <- function(paths, archive_dir) {
   dir.create(archive_dir, recursive = TRUE, showWarnings = FALSE)
   results <- character(length(paths))

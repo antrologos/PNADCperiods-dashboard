@@ -107,7 +107,11 @@ recode_quarterly <- function(quarterly_stacked, crosswalk) {
   pnadc[, servicos := transporte + alojaliment + infcomfinimobadm +
           adminpublica + outroservico + servicodomestico]
 
-  pnadc <- apply_periods_quarterly(pnadc, crosswalk)
+  pnadc <- PNADCperiods::pnadc_apply_periods(
+    pnadc, crosswalk,
+    weight_var = "V1028", anchor = "quarter",
+    calibrate = TRUE, verbose = TRUE
+  )
   pnadc[!is.na(weight_monthly) & !is.na(UF) & V2009 >= 14]
 }
 
@@ -155,7 +159,12 @@ recode_annual <- function(annual_stacked, crosswalk, deflator_dt,
     }
   }
 
-  d <- apply_periods_annual(annual_data, crosswalk)
+  d <- PNADCperiods::pnadc_apply_periods(
+    annual_data, crosswalk,
+    weight_var = "V1032", anchor = "year",
+    calibrate = TRUE, calibration_unit = "month",
+    smooth = TRUE, verbose = TRUE
+  )
   rm(annual_data); gc()
 
   # Filter to IBGE's household-income membership: keep all residents,

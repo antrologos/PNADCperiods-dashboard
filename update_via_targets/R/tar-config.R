@@ -10,10 +10,10 @@
 # Filesystem roots
 #
 # Acervo (custody): user-curated local mirror of the IBGE microdata. The
-# pipeline's Layer 1 only INSPECTS this folder and ASKS PNADcIBGE for files
-# that are missing. When IBGE republishes a quarter or visit (reweighting),
-# the user removes the local file manually; the next `tar_make()` will
-# detect MISSING and re-download via PNADcIBGE.
+# pipeline's Layer 1 INSPECTS this folder, compares against the IBGE FTP
+# catalog + sidecar (last-known upstream identity), and ASKS PNADcIBGE for
+# files that are MISSING or OUTDATED. Republication (reweighting) is
+# detected automatically when the FTP filename or Last-Modified advances.
 # ------------------------------------------------------------------------------
 
 tar_acervo_root <- function() {

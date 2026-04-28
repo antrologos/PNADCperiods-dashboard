@@ -304,44 +304,6 @@ test_that("OK when sidecar matches remote (filename + Last-Modified)", {
 })
 
 # -----------------------------------------------------------------------------
-# Tests: plan_deflator_actions
-# -----------------------------------------------------------------------------
-
-test_that("plan_deflator_actions trimestral_bundle: MISSING when local absent", {
-  source_pipeline_R()
-  remote <- data.table::data.table(
-    filename = "Deflatores.zip",
-    last_modified = as.POSIXct("2026-02-26 09:00", tz = "UTC"),
-    size_bytes = 114000
-  )
-  plan <- plan_deflator_actions(
-    "trimestral_bundle", remote = remote,
-    local_path = "/nonexistent/Deflatores.zip"
-  )
-  expect_equal(plan$status, "MISSING")
-})
-
-test_that("plan_deflator_actions anual_xls: handles multiple files", {
-  source_pipeline_R()
-  remote <- data.table::data.table(
-    filename = c("deflator_PNADC_2024.xls", "deflator_PNADC_2025.xls"),
-    last_modified = as.POSIXct(c("2025-04-24 10:00", "2026-04-24 10:00"),
-                                tz = "UTC"),
-    size_bytes = c(174000, 175000),
-    year = c(2024L, 2025L)
-  )
-  empty_inv <- data.table::data.table(
-    basename = character(), path = character(),
-    size_bytes = numeric(), mtime_utc = as.POSIXct(character(), tz = "UTC")
-  )
-  plan <- plan_deflator_actions(
-    "anual_xls", remote = remote, local_inventory = empty_inv
-  )
-  expect_equal(nrow(plan), 2L)
-  expect_true(all(plan$status == "MISSING"))
-})
-
-# -----------------------------------------------------------------------------
 # Tests: sidecar I/O
 # -----------------------------------------------------------------------------
 

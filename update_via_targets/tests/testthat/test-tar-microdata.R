@@ -355,13 +355,11 @@ test_that("lorenz_points returns trivial curve when sum(w*x) <= 0 (regression: d
 test_that("PR3: stack and crosswalk extracted; builders consume in-memory targets", {
   # PR3 of DAG re-architecture:
   # - stack_quarterly() reads 56 .fst once into quarterly_stacked
-  # - build_crosswalk_from_stack consumes the in-memory stack
+  # - crosswalk_target calls PNADCperiods::pnadc_identify_periods inline
   # - recode_quarterly does ALL labor recoding once
   # - build_state_monthly is a thin aggregator over quarterly_recoded
   source_pipeline_R()
   skip_if(!exists("stack_quarterly"), "stack_quarterly not loaded")
-  skip_if(!exists("build_crosswalk_from_stack"),
-          "build_crosswalk_from_stack not loaded")
   skip_if(!exists("recode_quarterly"), "recode_quarterly not loaded")
   skip_if(!exists("build_state_monthly"), "build_state_monthly not loaded")
   skip_if(!exists("build_prepared_microdata"), "build_prepared_microdata not loaded")
@@ -369,7 +367,6 @@ test_that("PR3: stack and crosswalk extracted; builders consume in-memory target
   # Structural: new functions have the expected signatures.
   expect_named(formals(stack_quarterly),
                c("quarterly_manifest", "cols"), ignore.order = TRUE)
-  expect_named(formals(build_crosswalk_from_stack), "quarterly_stacked")
   expect_named(formals(recode_quarterly),
                c("quarterly_stacked", "crosswalk"), ignore.order = TRUE)
 
@@ -392,9 +389,11 @@ test_that("PR3: stack and crosswalk extracted; builders consume in-memory target
   expect_false(grepl("rbindlist", state_body),
                info = "build_state_monthly must NOT stack .fst (PR3)")
 
-  # Old name is gone
+  # Old names are gone (renamed/inlined)
   expect_false(exists("build_crosswalk_from_quarterly"),
-               info = "build_crosswalk_from_quarterly was renamed to build_crosswalk_from_stack")
+               info = "build_crosswalk_from_quarterly is gone")
+  expect_false(exists("build_crosswalk_from_stack"),
+               info = "build_crosswalk_from_stack was inlined into _targets.R")
 })
 
 test_that("recode_quarterly: numeric_cols include Ano and Trimestre (regression)", {

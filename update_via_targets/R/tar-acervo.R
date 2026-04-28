@@ -1,26 +1,10 @@
-# ==============================================================================
-# tar-acervo.R — Layer 1 (custody of the PNADC microdata acervo)
-#
-# Responsibilities (simplified):
-#  - Inventory expected vs. local files
-#  - Plan: each expected file is either OK (already local) or MISSING
-#  - Download missing files via PNADcIBGE (no design, no labels, no deflators)
-#  - Validate downloaded files
-#
-# IBGE republication detection (e.g., reweighting) is handled OUT of band:
-# the user removes the affected local file and runs `tar_make()` again. There
-# is no automated FTP listing, no upstream-date parsing, no automated archive.
-# ==============================================================================
+# ==== Layer 1: custody of the PNADC microdata acervo ==========================
+# Inventory expected vs local; classify each as OK / MISSING / MISSING_UPSTREAM
+# / OUTDATED against IBGE FTP + sidecar; download via PNADcIBGE; validate.
+# Republication is auto-detected (FTP filename or Last-Modified advances past
+# the sidecar entry → OUTDATED → rename + redownload).
 
-# ------------------------------------------------------------------------------
-# Listing of expected files
-# ------------------------------------------------------------------------------
-
-#' List expected quarterly files up to (year, quarter)
-#'
-#' @param up_to_year integer current year
-#' @param up_to_quarter integer current quarter (1-4)
-#' @return data.table(year, quarter, period, basename)
+# ==== Listing of expected files ===============================================
 list_expected_quarters <- function(up_to_year, up_to_quarter) {
   stopifnot(up_to_quarter %in% 1:4)
   ys <- 2012L:up_to_year
@@ -31,20 +15,10 @@ list_expected_quarters <- function(up_to_year, up_to_quarter) {
   out[]
 }
 
-#' List expected annual files.
-#'
-#' By default (`visits = NULL`) returns one row per (year, default_visit)
-#' where default_visit follows `get_default_visit()` (visit 5 for
-#' 2020-2021, visit 1 otherwise) — this is the historical pipeline
-#' default used by `prepared_microdata_fst`.
-#'
-#' Pass `visits = 1:5` to enumerate ALL visits per year (used to populate
-#' the local acervo even with visits the dashboard pipeline doesn't
-#' consume — they're cheap to keep around for downstream research).
-#'
-#' @param up_to_year integer current year (annual data lags ~1 year)
-#' @param visits integer vector of visits (1..5) to enumerate, or NULL
-#'   (default) to use `get_default_visit(year)` per year.
+# Pass visits = NULL to use get_default_visit(year) (visit 5 for 2020-2021,
+# visit 1 otherwise — historical default for prepared_microdata_fst).
+# Pass visits = 1:5 to enumerate all visits per year (populates the acervo
+# even with visits the dashboard pipeline doesn't consume).
 list_expected_visits <- function(up_to_year, visits = NULL) {
   ys <- 2012L:(up_to_year - 1L)
   if (is.null(visits)) {
@@ -59,15 +33,7 @@ list_expected_visits <- function(up_to_year, visits = NULL) {
   out[]
 }
 
-# ------------------------------------------------------------------------------
-# Local inventory
-# ------------------------------------------------------------------------------
-
-#' Inventory local files in a directory matching a pattern.
-#'
-#' @param dir character directory path
-#' @param pattern regex passed to list.files()
-#' @return data.table(basename, path, size_bytes, mtime_utc)
+# ==== Local inventory =========================================================
 inventory_local <- function(dir, pattern, ignore.case = FALSE) {
   if (!dir.exists(dir)) {
     return(data.table::data.table(
@@ -102,251 +68,81 @@ inventory_local <- function(dir, pattern, ignore.case = FALSE) {
   )
 }
 
-# ------------------------------------------------------------------------------
-# Plan: compare expected vs. local; flag missing files for download.
-# ------------------------------------------------------------------------------
-
-#' Compare expected files against local inventory and the IBGE FTP catalog.
-#'
-#' Returns a data.table with columns:
-#'   file_type, year, period, basename, local_path, size_bytes, status,
-#'   upstream_filename, upstream_last_modified,
-#'   prev_upstream_filename, prev_upstream_last_modified, reason
-#'
-#' Status values:
-#'   OK               — local present; IBGE state matches sidecar (or sidecar absent and remote unavailable)
-#'   MISSING          — local absent but FTP has the file (download)
-#'   OUTDATED         — local present but IBGE filename or Last-Modified
-#'                      changed since last download (rename + re-download)
-#'   MISSING_UPSTREAM — expected but FTP also doesn't have it (IBGE not yet
-#'                      published) — apply will skip
-#'
-#' Backwards-compatible: if `remote_catalog` is NULL, falls back to OK/MISSING
-#' only (legacy behavior).
-#'
-#' @param file_type "quarterly" or "annual"
-#' @param expected output of list_expected_quarters() or list_expected_visits()
-#' @param local_inventory output of inventory_local()
-#' @param remote_catalog list-by-key (year for quarterly; visit for annual)
-#'   of data.tables with columns (filename, last_modified, year,
-#'   period|quarter|visit, upstream_date). Pass NULL to skip remote lookup.
-#' @param catalog_sidecar named list keyed by basename, each with
-#'   `upstream_filename` and `upstream_last_modified` (POSIXct or
-#'   character ISO-8601). Pass NULL on first use; missing entries
-#'   default to OUTDATED (defensive).
+# ==== Plan: classify expected files vs local + remote + sidecar ===============
+# Returns data.table with status + upstream/sidecar columns. If remote_catalog
+# is NULL, legacy OK/MISSING only (no OUTDATED detection).
 plan_acervo_actions <- function(file_type, expected, local_inventory,
                                  remote_catalog = NULL,
                                  catalog_sidecar = NULL) {
-  stopifnot(file_type %in% c("quarterly", "annual"))
-
-  expected <- data.table::copy(expected)
   out <- merge(
-    expected,
+    data.table::copy(expected),
     local_inventory[, .(basename, local_path = path,
                         local_mtime = mtime_utc, size_bytes)],
-    by = "basename",
-    all.x = TRUE
+    by = "basename", all.x = TRUE
   )
 
-  # Pre-fill new columns
-  out[, upstream_filename := NA_character_]
-  out[, upstream_last_modified := as.POSIXct(NA, tz = "UTC")]
-  out[, prev_upstream_filename := NA_character_]
-  out[, prev_upstream_last_modified := as.POSIXct(NA, tz = "UTC")]
+  # Per-row remote + sidecar lookups, pulled into vectors via lapply
+  rmt <- lapply(seq_len(nrow(out)), function(i)
+    .lookup_remote(remote_catalog, file_type, out$year[i], out$period[i]))
+  prv <- lapply(out$basename, function(b) .lookup_sidecar(catalog_sidecar, b))
+
+  out[, upstream_filename      := vapply(rmt, function(r)
+        if (is.null(r)) NA_character_ else r$filename, character(1L))]
+  out[, upstream_last_modified := do.call(c, lapply(rmt, function(r)
+        if (is.null(r)) as.POSIXct(NA, tz = "UTC") else r$last_modified))]
+  out[, prev_upstream_filename := vapply(prv, function(p)
+        if (is.null(p)) NA_character_ else p$upstream_filename %||% NA_character_,
+        character(1L))]
+  out[, prev_upstream_last_modified := do.call(c, lapply(prv, function(p)
+        .as_posix(if (is.null(p)) NULL else p$upstream_last_modified)))]
   out[, status := NA_character_]
   out[, reason := NA_character_]
 
-  ftp_provided <- !is.null(remote_catalog)
+  has_local  <- !is.na(out$local_path)
+  has_remote <- !is.na(out$upstream_filename)
 
-  for (i in seq_len(nrow(out))) {
-    row <- out[i]
-    remote <- .lookup_remote(remote_catalog, file_type, row$year, row$period)
-    prev   <- .lookup_sidecar(catalog_sidecar, row$basename)
-
-    if (!is.null(remote)) {
-      out[i, upstream_filename := remote$filename]
-      out[i, upstream_last_modified := remote$last_modified]
-    }
-    if (!is.null(prev)) {
-      out[i, prev_upstream_filename := prev$upstream_filename %||% NA_character_]
-      lm <- prev$upstream_last_modified
-      if (is.character(lm)) lm <- as.POSIXct(lm, format = "%Y-%m-%dT%H:%M:%SZ",
-                                              tz = "UTC")
-      out[i, prev_upstream_last_modified := lm]
-    }
-
-    has_local  <- !is.na(row$local_path)
-    has_remote <- !is.null(remote)
-
-    # Backwards-compat: if no remote_catalog was passed at all, fall back
-    # to the original simple OK/MISSING semantics. Callers that pass a
-    # catalog opt into the richer MISSING_UPSTREAM / OUTDATED logic.
-    if (!ftp_provided) {
-      if (has_local) {
-        out[i, status := "OK"]
-      } else {
-        out[i, status := "MISSING"]
-      }
-      next
-    }
-
-    if (!has_remote && !has_local) {
-      out[i, status := "MISSING_UPSTREAM"]
-      out[i, reason := "expected but neither local nor IBGE FTP has it"]
-    } else if (!has_remote && has_local) {
-      out[i, status := "OK"]
-      out[i, reason := "local present; FTP listing unavailable for this entry"]
-    } else if (has_remote && !has_local) {
-      out[i, status := "MISSING"]
-      out[i, reason := sprintf("FTP has %s; local absent", remote$filename)]
-    } else {
-      # Both present: compare against sidecar (NOT against local mtime —
-      # local mtime reflects download wall-clock, not IBGE publication date)
-      if (is.null(prev)) {
-        # Bootstrap path: no sidecar entry yet (first run after FTP-watcher
-        # rollout, or sidecar lost). Treat as OK and emit a "register"
-        # recommendation in the reason; apply_acervo_plan will write the
-        # sidecar entry on next download cycle. Re-downloading every
-        # local file just to capture state would be destructive.
-        out[i, status := "OK"]
-        out[i, reason := "no sidecar; bootstrap from current FTP state"]
-        # Capture so apply_acervo_plan can update sidecar without download
-        out[i, upstream_filename := remote$filename]
-        out[i, upstream_last_modified := remote$last_modified]
-      } else {
-        name_changed <- !identical(prev$upstream_filename, remote$filename)
-        lm0 <- prev$upstream_last_modified
-        prev_lm <- if (is.character(lm0)) {
-          as.POSIXct(lm0, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
-        } else lm0
-        date_changed <- is.na(prev_lm) ||
-          (!is.na(remote$last_modified) && remote$last_modified > prev_lm)
-        if (name_changed || date_changed) {
-          out[i, status := "OUTDATED"]
-          if (name_changed) {
-            out[i, reason := sprintf("filename changed: %s -> %s",
-                                      prev$upstream_filename, remote$filename)]
-          } else {
-            out[i, reason := sprintf("Last-Modified advanced: %s -> %s",
-                                      format(prev_lm, "%Y-%m-%d %H:%M"),
-                                      format(remote$last_modified,
-                                              "%Y-%m-%d %H:%M"))]
-          }
-        } else {
-          out[i, status := "OK"]
-        }
-      }
-    }
+  # Legacy path: no FTP catalog → only OK/MISSING.
+  if (is.null(remote_catalog)) {
+    out[has_local,  status := "OK"]
+    out[!has_local, status := "MISSING"]
+    return(out[])
   }
+
+  # Vectorized state assignment
+  out[!has_remote & !has_local, `:=`(
+        status = "MISSING_UPSTREAM",
+        reason = "expected but neither local nor IBGE FTP has it")]
+  out[!has_remote &  has_local, `:=`(
+        status = "OK",
+        reason = "local present; FTP listing unavailable for this entry")]
+  out[ has_remote & !has_local, `:=`(
+        status = "MISSING",
+        reason = sprintf("FTP has %s; local absent", upstream_filename))]
+
+  # Both present — bootstrap (no sidecar entry) is OK, captures FTP identity.
+  both     <- has_remote & has_local
+  has_prev <- !is.na(out$prev_upstream_filename)
+  out[both & !has_prev, `:=`(
+        status = "OK",
+        reason = "no sidecar; bootstrap from current FTP state")]
+
+  # Both present + sidecar exists — compare filename and Last-Modified.
+  cmp      <- both & has_prev
+  name_chg <- cmp & out$prev_upstream_filename != out$upstream_filename
+  date_chg <- cmp & (is.na(out$prev_upstream_last_modified) |
+                     (!is.na(out$upstream_last_modified) &
+                      out$upstream_last_modified > out$prev_upstream_last_modified))
+
+  out[name_chg, reason := sprintf("filename changed: %s -> %s",
+                                  prev_upstream_filename, upstream_filename)]
+  out[date_chg & !name_chg, reason := sprintf(
+        "Last-Modified advanced: %s -> %s",
+        format(prev_upstream_last_modified, "%Y-%m-%d %H:%M"),
+        format(upstream_last_modified,      "%Y-%m-%d %H:%M"))]
+  out[name_chg | date_chg,         status := "OUTDATED"]
+  out[cmp & !(name_chg | date_chg), status := "OK"]
+
   out[]
-}
-
-#' Plan deflator actions (separate from data plans).
-#'
-#' Two flavours:
-#'   - "trimestral_bundle": single Deflatores.zip (one row plan)
-#'   - "anual_xls": multiple deflator_PNADC_YYYY.xls entries
-#'
-#' @param kind one of "trimestral_bundle" / "anual_xls"
-#' @param remote either a 1-row data.table (for bundle) or multi-row
-#'   (for anual). NULL means FTP unavailable.
-#' @param local_inventory output of inventory_local on the deflator dir
-#'   (anual flavour only).
-#' @param local_path absolute path to the local Deflatores.zip (bundle
-#'   flavour only).
-#' @param catalog_sidecar named list keyed by deflator basename
-plan_deflator_actions <- function(kind, remote = NULL,
-                                   local_inventory = NULL,
-                                   local_path = NULL,
-                                   catalog_sidecar = NULL) {
-  stopifnot(kind %in% c("trimestral_bundle", "anual_xls"))
-
-  if (kind == "trimestral_bundle") {
-    bn <- "Deflatores.zip"
-    has_local <- !is.null(local_path) && file.exists(local_path)
-    has_remote <- !is.null(remote) && nrow(remote) >= 1L
-    prev <- .lookup_sidecar(catalog_sidecar, bn)
-    plan <- data.table::data.table(
-      file_type = "trimestral_deflator",
-      basename = bn,
-      local_path = if (has_local) local_path else NA_character_,
-      upstream_filename = if (has_remote) remote$filename[1L] else NA_character_,
-      upstream_last_modified = if (has_remote) remote$last_modified[1L]
-                                else as.POSIXct(NA, tz = "UTC"),
-      prev_upstream_filename = prev$upstream_filename %||% NA_character_,
-      prev_upstream_last_modified = .as_posix(prev$upstream_last_modified),
-      status = NA_character_, reason = NA_character_
-    )
-    plan[, status := .deflator_status(has_local, has_remote, prev,
-                                       remote$last_modified[1L])]
-    return(plan[])
-  }
-
-  # anual_xls
-  empty <- data.table::data.table(
-    file_type = character(), basename = character(),
-    local_path = character(), year = integer(),
-    upstream_filename = character(),
-    upstream_last_modified = as.POSIXct(character(), tz = "UTC"),
-    prev_upstream_filename = character(),
-    prev_upstream_last_modified = as.POSIXct(character(), tz = "UTC"),
-    status = character(), reason = character()
-  )
-  if (is.null(remote) || !nrow(remote)) return(empty)
-
-  out <- data.table::copy(remote)
-  out[, file_type := "anual_deflator"]
-  out[, basename := filename]
-  if (!is.null(local_inventory) && nrow(local_inventory)) {
-    out <- merge(out,
-                 local_inventory[, .(basename, local_path = path,
-                                     local_mtime = mtime_utc)],
-                 by = "basename", all.x = TRUE)
-  } else {
-    out[, local_path := NA_character_]
-  }
-  out[, prev_upstream_filename := vapply(basename, function(b) {
-    p <- .lookup_sidecar(catalog_sidecar, b)
-    p$upstream_filename %||% NA_character_
-  }, character(1L))]
-  out[, prev_upstream_last_modified := do.call(c, lapply(basename, function(b) {
-    p <- .lookup_sidecar(catalog_sidecar, b)
-    .as_posix(p$upstream_last_modified)
-  }))]
-  out[, upstream_filename := filename]
-  out[, upstream_last_modified := last_modified]
-  out[, status := NA_character_]
-  out[, reason := NA_character_]
-  for (i in seq_len(nrow(out))) {
-    has_local <- !is.na(out$local_path[i])
-    prev <- list(upstream_filename = out$prev_upstream_filename[i],
-                 upstream_last_modified = out$prev_upstream_last_modified[i])
-    out[i, status := .deflator_status(has_local, TRUE, prev,
-                                       out$last_modified[i])]
-  }
-  data.table::setcolorder(out, c("file_type", "basename", "local_path",
-                                 "year", "upstream_filename",
-                                 "upstream_last_modified",
-                                 "prev_upstream_filename",
-                                 "prev_upstream_last_modified",
-                                 "status", "reason"))
-  out[]
-}
-
-# Helper: deflator status logic
-.deflator_status <- function(has_local, has_remote, prev, remote_last_modified) {
-  if (!has_remote && !has_local) return("MISSING_UPSTREAM")
-  if (!has_remote && has_local) return("OK")
-  if (has_remote && !has_local) return("MISSING")
-  # Both present
-  if (is.null(prev) || is.null(prev$upstream_filename) ||
-      is.na(prev$upstream_filename)) return("OUTDATED")
-  prev_lm <- .as_posix(prev$upstream_last_modified)
-  if (is.na(prev_lm)) return("OUTDATED")
-  if (!is.na(remote_last_modified) && remote_last_modified > prev_lm) {
-    return("OUTDATED")
-  }
-  "OK"
 }
 
 # Helper: lookup remote catalog entry for a given (file_type, year, period).
@@ -703,18 +499,9 @@ download_visit <- function(year, visit, dest_path,
                year, visit, retries + 1L), call. = FALSE)
 }
 
-# ------------------------------------------------------------------------------
-# Apply plan: for each MISSING row, download via PNADcIBGE.
-# ------------------------------------------------------------------------------
-
-#' Apply an acervo-action plan and return an updated manifest.
-#'
-#' Side effects: writes files on disk unless ACERVO_DRY_RUN=1.
-#'
-#' @param plan output of plan_acervo_actions()
-#' @param file_type "quarterly" or "annual"
-#' @param dest_dir directory to write downloaded files into
-#' @return updated manifest data.table
+# ==== Apply plan: download each MISSING/OUTDATED row via PNADcIBGE ============
+# Side effects: writes files on disk unless ACERVO_DRY_RUN=1. Updates sidecar
+# in-place via <<- and persists to sidecar_path at the end.
 apply_acervo_plan <- function(plan, file_type, dest_dir,
                                sidecar = list(),
                                sidecar_path = NULL) {
@@ -722,52 +509,33 @@ apply_acervo_plan <- function(plan, file_type, dest_dir,
   out[, download_timestamp := as.POSIXct(NA, tz = "UTC")]
   out[, n_rows := NA_integer_]
 
-  # Ensure new sidecar columns exist even if plan was generated by an old
-  # caller that didn't include them
-  for (col in c("upstream_filename", "upstream_last_modified",
-                "prev_upstream_filename", "prev_upstream_last_modified")) {
-    if (!col %in% names(out)) {
-      out[, (col) := if (col %in% c("upstream_last_modified",
-                                     "prev_upstream_last_modified"))
-                       as.POSIXct(NA, tz = "UTC") else NA_character_]
-    }
+  # Bootstrap: OK rows with upstream filename but no sidecar entry yet —
+  # register identity without downloading (handles first FTP-watcher run)
+  boot <- which(out$status == "OK" & !is.na(out$upstream_filename) &
+                is.na(out$prev_upstream_filename))
+  for (i in boot) {
+    sidecar <<- update_acervo_sidecar(
+      sidecar, out$basename[i], out$upstream_filename[i],
+      out$upstream_last_modified[i])
   }
 
-  for (i in seq_len(nrow(out))) {
-    row <- out[i]
-
-    # Bootstrap: row is OK but sidecar lacked an entry — capture the
-    # current IBGE state without downloading. This handles first runs
-    # after FTP-watcher rollout (or sidecar deletion).
-    if (identical(row$status, "OK") &&
-        !is.na(row$upstream_filename) &&
-        is.na(row$prev_upstream_filename)) {
-      sidecar <<- update_acervo_sidecar(
-        sidecar,
-        basename = row$basename,
-        upstream_filename = row$upstream_filename,
-        upstream_last_modified = row$upstream_last_modified
-      )
-      next
-    }
-
-    if (!row$status %in% c("MISSING", "OUTDATED")) next
-
-    dest <- file.path(dest_dir, row$basename)
+  # Sequential I/O: download each MISSING/OUTDATED row
+  to_do <- which(out$status %in% c("MISSING", "OUTDATED"))
+  for (i in to_do) {
+    bn          <- out$basename[i]
+    is_outdated <- out$status[i] == "OUTDATED"
+    dest        <- file.path(dest_dir, bn)
     dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
 
     # OUTDATED: rename existing local to .OUTDATED.<ts> before redownload
-    is_outdated <- identical(row$status, "OUTDATED")
-    if (is_outdated && !is.na(row$local_path) && file.exists(row$local_path) &&
-        !acervo_is_dry_run()) {
+    if (is_outdated && !is.na(out$local_path[i]) &&
+        file.exists(out$local_path[i]) && !acervo_is_dry_run()) {
       stamp <- format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
-      stash <- paste0(row$local_path, ".OUTDATED.", stamp)
-      ok_rename <- tryCatch({
-        atomic_rename(row$local_path, stash); TRUE
-      }, error = function(e) {
-        message("could not stash OUTDATED ", row$basename, ": ",
-                conditionMessage(e)); FALSE
-      })
+      stash <- paste0(out$local_path[i], ".OUTDATED.", stamp)
+      ok_rename <- tryCatch({ atomic_rename(out$local_path[i], stash); TRUE },
+                            error = function(e) {
+                              message("could not stash ", bn, ": ",
+                                      conditionMessage(e)); FALSE })
       if (!ok_rename) {
         out[i, `:=`(status = "FAILED",
                     reason = "could not stash OUTDATED local file")]
@@ -776,43 +544,31 @@ apply_acervo_plan <- function(plan, file_type, dest_dir,
     }
 
     download_ok <- tryCatch({
-      if (file_type == "quarterly") {
-        download_quarter(row$year, row$period, dest)
-      } else {
-        download_visit(row$year, row$period, dest)
-      }
+      if (file_type == "quarterly")
+        download_quarter(out$year[i], out$period[i], dest)
+      else
+        download_visit(out$year[i], out$period[i], dest)
       TRUE
     }, error = function(e) {
-      message("download failed for ", row$basename, ": ", conditionMessage(e))
-      FALSE
-    })
+      message("download failed for ", bn, ": ", conditionMessage(e)); FALSE })
 
     if (download_ok && !acervo_is_dry_run()) {
-      new_status <- if (is_outdated) "DOWNLOADED_UPDATE" else "DOWNLOADED_NEW"
       out[i, `:=`(
-        status = new_status,
-        local_path = dest,
+        status             = if (is_outdated) "DOWNLOADED_UPDATE" else "DOWNLOADED_NEW",
+        local_path         = dest,
         download_timestamp = Sys.time()
       )]
-      # Update sidecar with the upstream identity captured by the plan
-      if (!is.na(row$upstream_filename)) {
+      if (!is.na(out$upstream_filename[i])) {
         sidecar <<- update_acervo_sidecar(
-          sidecar,
-          basename = row$basename,
-          upstream_filename = row$upstream_filename,
-          upstream_last_modified = row$upstream_last_modified
-        )
+          sidecar, bn, out$upstream_filename[i], out$upstream_last_modified[i])
       }
     } else if (!download_ok) {
-      out[i, `:=`(status = "FAILED",
-                  reason = "download error")]
+      out[i, `:=`(status = "FAILED", reason = "download error")]
     }
   }
 
-  # Persist sidecar at end of pass (single write)
-  if (!is.null(sidecar_path) && !acervo_is_dry_run()) {
+  if (!is.null(sidecar_path) && !acervo_is_dry_run())
     save_acervo_sidecar(sidecar, sidecar_path)
-  }
 
   attr(out, "sidecar") <- sidecar
   out[]
@@ -829,4 +585,27 @@ write_manifest_csv <- function(manifest, csv_path) {
   data.table::fwrite(manifest, tmp)
   atomic_rename(tmp, csv_path)
   invisible(csv_path)
+}
+
+# ==== Validate manifest_partial ===============================================
+# Re-run schema/cardinality on each freshly downloaded file; flag failures as
+# INVALID. Same shape as input with validation_ok / validation_reason / n_rows
+# columns added. Used by both quarterly_manifest and annual_manifest targets.
+validate_acervo_manifest <- function(manifest_partial, file_type) {
+  m <- data.table::copy(manifest_partial)
+  m[, validation_ok     := TRUE]
+  m[, validation_reason := NA_character_]
+  idx <- which(m$status %in% c("DOWNLOADED_NEW", "DOWNLOADED_UPDATE") &
+                 !is.na(m$local_path))
+  for (i in idx) {
+    v <- validate_downloaded_file(m$local_path[i], file_type, m$year[i])
+    if (!isTRUE(v$ok)) {
+      m[i, `:=`(status            = "INVALID",
+                validation_ok     = FALSE,
+                validation_reason = v$reason)]
+    } else {
+      m[i, n_rows := v$n_rows]
+    }
+  }
+  m[]
 }

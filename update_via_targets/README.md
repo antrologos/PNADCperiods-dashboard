@@ -9,9 +9,10 @@ from the local PNADC acervo.
 1. **Custody** (`R/tar-acervo.R`): inventories
    `D:/Dropbox/Bancos_Dados/PNADC/`, downloads missing files via
    `PNADcIBGE`, validates each download (sample read + cardinality check).
-   IBGE republication (reweighting) is handled out-of-band: the user
-   removes the affected local file and runs `tar_make()` again, which
-   detects MISSING and re-downloads.
+   IBGE republication (reweighting) is detected **automatically** by the
+   FTP-watcher + sidecar — when the remote filename or `Last-Modified`
+   advances, the local file is renamed to `.OUTDATED.<timestamp>` and
+   re-downloaded. See "Auto-detection of external changes" below.
 2. **Cache** (`R/tar-microdata.R::build_prepared_microdata`): produces
    `data/processed/prepared_microdata.fst` (~161 MB, reusable across
    dashboard and papers).
@@ -65,8 +66,10 @@ Sys.setenv(ACERVO_DRY_RUN = "")
 targets::tar_make()                      # serial
 targets::tar_make_future(workers = 4)    # parallel (after future setup)
 
-# Force re-check of local acervo (e.g., after manually removing a file
-# IBGE has just reweighted)
+# Force re-check of local acervo (rarely needed — the FTP-watcher
+# auto-detects IBGE republication via filename + Last-Modified diff
+# against the sidecar, and triggers OUTDATED → re-download. Use this
+# only if the sidecar is corrupted or you want to bypass detection.)
 targets::tar_invalidate(c("quarterly_inventory", "annual_inventory"))
 
 # Cutover after equivalence test passes
@@ -84,8 +87,8 @@ cascades the "outdated" label through every descendant, even though
 `tar_make()` actually skips them when the watcher's output hash is
 unchanged.
 
-The result: the default visnetwork shows ~45 of 45 nodes as blue
-"outdated" while `tar_make()` reports 1 completed + 44 skipped. The
+The result: the default visnetwork shows ~46 of 46 nodes as blue
+"outdated" while `tar_make()` reports 1 completed + 45 skipped. The
 visualization is pessimistic; the execution is the truth.
 
 Use the helpers instead:
@@ -135,18 +138,49 @@ against this sidecar to detect IBGE-side updates (whether the filename
 changed via reweight suffix, OR Last-Modified advanced with the same
 filename — both are signals).
 
-**Status values produced by the plans:**
+**Custody state machine.** Each expected file (one per quarter or
+year-visit) flows through three phases — *plan* (decide what to do),
+*apply* (download if needed), *validate* (sanity-check the new file).
 
-| Status | Meaning |
-|---|---|
-| `OK` | local present, sidecar matches FTP |
-| `MISSING` | local absent, FTP has it (download via PNADcIBGE) |
-| `MISSING_UPSTREAM` | expected (calendar) but FTP doesn't have it (IBGE not yet published) |
-| `OUTDATED` | local present, but filename or Last-Modified changed on FTP since last download (rename local to `.OUTDATED.<ts>` + redownload) |
-| `DOWNLOADED_NEW` | apply just downloaded a new file |
-| `DOWNLOADED_UPDATE` | apply just redownloaded an OUTDATED file |
-| `INVALID` | downloaded file failed schema/size validation |
-| `FAILED` | download attempt failed |
+```
+PLAN PHASE (plan_acervo_actions)
+  expected file
+     ├── local absent + FTP has it ............... MISSING
+     ├── local absent + FTP also missing .......... MISSING_UPSTREAM   (IBGE
+     │                                                                  not yet
+     │                                                                  published)
+     ├── local present + sidecar matches FTP ...... OK
+     └── local present + filename/Last-Modified
+         changed since sidecar .................... OUTDATED
+
+APPLY PHASE (apply_acervo_plan)
+  MISSING       → download → DOWNLOADED_NEW    | FAILED
+  OUTDATED      → rename .OUTDATED.<ts>        | FAILED (rename failed)
+                  → download → DOWNLOADED_UPDATE | FAILED
+  OK / MISSING_UPSTREAM → no action
+
+VALIDATE PHASE (quarterly_manifest / annual_manifest)
+  DOWNLOADED_NEW / DOWNLOADED_UPDATE
+     ├── schema + cardinality OK ................. (status preserved)
+     └── any check fails ......................... INVALID
+                                                   (file moved to .INVALID)
+```
+
+| Status | Where set | Meaning |
+|---|---|---|
+| `OK` | plan | local present, sidecar matches FTP (or remote unavailable + local exists) |
+| `MISSING` | plan | local absent, FTP has it — will download |
+| `MISSING_UPSTREAM` | plan | expected (calendar) but FTP doesn't have it — IBGE not yet published, will retry next run |
+| `OUTDATED` | plan | local present, but filename or Last-Modified advanced on FTP since last download |
+| `DOWNLOADED_NEW` | apply | newly downloaded (was MISSING) |
+| `DOWNLOADED_UPDATE` | apply | re-downloaded after OUTDATED rename |
+| `FAILED` | apply | download attempt failed (or OUTDATED rename failed) — blocks deploy |
+| `INVALID` | validate | downloaded file failed schema/cardinality check — blocks deploy |
+
+`FAILED` and `INVALID` are terminal for the run: `pipeline_done` warns
+about them and `dashboard_deployed` refuses to deploy until they're zero.
+The `acervo_manifest.csv` (in `processed_cache_dir`) shows the `status` +
+`reason` for every file, useful for debugging.
 
 **Scenarios handled automatically:**
 
@@ -169,7 +203,7 @@ visit 5 for 2020-2021) when building `prepared_microdata_fst`. Other
 visits sit in the acervo for downstream research use.
 
 **Result:** `tar_make()` with no external changes shows exactly **1 `+`**
-(the FTP-listing watcher) and 49 skips in ~8 seconds. The DAG stays
+(the FTP-listing watcher) and 45 skips in ~8 seconds. The DAG stays
 visually green.
 
 **What still needs manual intervention:**
@@ -226,3 +260,18 @@ Six suites:
 | Acervo populated, full `tar_make()` | 30–60 min |
 | Acervo empty (worst case, ~68 ZIPs via PNADcIBGE) | 6–12 h |
 | Incremental (1 new quarter) | 5–10 min |
+
+## Parallel runs (`tar_make_future`) — note on memory
+
+`_targets.R` sets `storage = "main"` globally (`tar_option_set`). With
+`tar_make_future(workers = 1)` or 2 workers, this is fine. With more
+workers, the in-memory stacks (`quarterly_stacked` ≈ 28M rows,
+`annual_stacked` ≈ 5.7M rows, `quarterly_recoded`, `annual_recoded`,
+`prepared_microdata_fst`) are materialized in the main process and sent
+to each worker — RAM scales linearly with worker count.
+
+If you need workers > 2, override `storage = "worker"` on those specific
+targets (writes a temp file the workers read directly, trading I/O for
+RAM). Single-machine `tar_make()` is the default and recommended
+workflow; the pipeline is I/O-bound, not CPU-bound, so parallelism gains
+are modest beyond 2-4 workers.

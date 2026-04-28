@@ -51,15 +51,14 @@ test_that("DAG parses and contains the expected core targets", {
           "t0_backup_targets",
           # PR1: Network resources hoisted to L1
           "inpc_factor_table",
-          "brazil_states_sf_raw",
           # Camada 1
           "expected_quarters", "expected_visits",
-          "deflator_download", "quarterly_deflator_download",
+          "deflator_download",
           "quarterly_inventory", "annual_inventory", "deflator_inventory",
           "quarterly_plan", "annual_plan",
           "quarterly_manifest_partial", "annual_manifest_partial",
           "quarterly_manifest", "annual_manifest",
-          "acervo_manifest", "acervo_manifest_csv",
+          "acervo_manifest",
           "deflator_path",
           # Camada 2
           "quarterly_stacked",
