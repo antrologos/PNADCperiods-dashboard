@@ -17,6 +17,24 @@ inequalityUI <- function(id) {
       width = 320,
       class = "inequality-sidebar",
 
+      # Data freshness — replicates mod_geographic.R / mod_series_explorer.R
+      div(
+        class = "mb-3 p-2 rounded",
+        style = "background: #f8f9fa; border: 1px solid #e9ecef;",
+        div(
+          class = "d-flex justify-content-between align-items-center",
+          div(
+            tags$small(class = "text-muted", style = "font-size: 0.7rem;",
+                       textOutput(ns("label_last_updated"), inline = TRUE)),
+            tags$div(
+              class = "text-primary",
+              style = "font-size: 0.8rem; font-weight: 600;",
+              textOutput(ns("last_updated"), inline = TRUE)
+            )
+          )
+        )
+      ),
+
       # Theme selector
       uiOutput(ns("theme_selector")),
 
@@ -116,6 +134,29 @@ inequalityServer <- function(id, shared_data, lang) {
 
     decomp_data <- reactive({
       shared_data$get_income_decomposition_data()
+    })
+
+    # ====================================================================
+    # Data freshness badge
+    # ====================================================================
+
+    output$label_last_updated <- renderText({
+      i18n("messages.last_updated", lang())
+    })
+
+    output$last_updated <- renderText({
+      lang_val <- lang()
+      ymv <- c(
+        if (!is.null(ineq_data()))       ineq_data()$ref_month_yyyymm,
+        if (!is.null(shares_data()))     shares_data()$ref_month_yyyymm,
+        if (!is.null(lorenz_data_all())) lorenz_data_all()$ref_month_yyyymm,
+        if (!is.null(decomp_data()))     decomp_data()$ref_month_yyyymm
+      )
+      ymv <- ymv[!is.na(ymv) & nchar(as.character(ymv)) >= 6L]
+      if (length(ymv) == 0L) return(i18n("messages.not_available", lang_val))
+      ym <- as.character(max(as.integer(ymv)))
+      pretty <- paste0(substr(ym, 1L, 4L), "-", substr(ym, 5L, 6L))
+      sprintf(i18n("messages.data_through", lang_val), pretty)
     })
 
     # ====================================================================

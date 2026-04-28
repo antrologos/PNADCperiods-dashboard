@@ -195,7 +195,11 @@ load_app_data <- function() {
     sidra_source = NULL,
     sidra_fetched_at = NULL,
     sidra_latest_ref_month = NULL,
-    sidra_log = NULL
+    sidra_log = NULL,
+    # Microdata pipeline provenance (bundled microdata_log.json from tar_make())
+    microdata_log = NULL,
+    microdata_fetched_at = NULL,
+    microdata_pipeline_mode = NULL
   )
 
   # --- Eager loads (SIDRA: prefer GitHub release, fall back to bundled .qs2/.rds) ---
@@ -246,6 +250,24 @@ load_app_data <- function() {
   app_data$sidra_source <- if (any(sources == "release")) "release" else "bundled"
   # Legacy alias: many places still read `last_updated`
   app_data$last_updated <- app_data$sidra_fetched_at
+
+  # Microdata provenance (bundled JSON written by the targets pipeline).
+  mlog_path <- file.path(data_dir, "microdata_log.json")
+  if (file.exists(mlog_path)) {
+    mlog <- tryCatch(jsonlite::read_json(mlog_path, simplifyVector = FALSE),
+                     error = function(e) NULL)
+    app_data$microdata_log <- mlog
+    if (!is.null(mlog)) {
+      if (!is.null(mlog$fetched_at)) {
+        app_data$microdata_fetched_at <- tryCatch(
+          as.POSIXct(mlog$fetched_at,
+                     format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+          error = function(e) NULL
+        )
+      }
+      app_data$microdata_pipeline_mode <- mlog$pipeline_mode
+    }
+  }
 
   # --- Lazy loads (tab-specific, loaded on first visit) ---
 

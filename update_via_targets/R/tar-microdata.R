@@ -1,26 +1,14 @@
-# ==============================================================================
-# tar-microdata.R — Layer 2 (cache) and Layer 3 (dashboard assets) builders
+# ==== Layer 2 cache + Layer 3 dashboard assets ================================
+# Pure transforms over the acervo manifest + on-disk .fst. Migrated from
+# scripts/precompute_*.R, factored to be re-runnable and idempotent in targets.
 #
-# These functions are pure transforms over the acervo manifest + on-disk .fst.
-# They are migrated from PNADCperiods-dashboard/scripts/precompute_*.R and
-# code/precompute_geographic_microdata.R, but factored to be re-runnable and
-# idempotent inside a targets DAG.
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# Layer 2 — prepared_microdata.fst (~161 MB)
-#
-# Pipeline:
-#   1. Read all available quarterly .fst (filter to quarterly_required_vars)
-#   2. build_crosswalk()
-#   3. Read annual visits per get_default_visit() rule, harmonize income vars
-#   4. apply_periods_annual()
-#   5. Filter household members (drop V2005 in {17, 18, 19} per IBGE VD2003)
-#   6. Deflate incomes (CO2/CO2e + INPC to deflation_target_date)
-#   7. Construct 8 per-capita income components
-#   8. Create demographic grouping variables
-#   9. Write to data/processed/prepared_microdata.fst
-# ------------------------------------------------------------------------------
+# prepared_microdata.fst pipeline (~161 MB):
+#   1. Stack quarterly .fst → quarterly_stacked (in tar-stack.R)
+#   2. pnadc_identify_periods → crosswalk_target
+#   3. Stack + harmonize annual visits → annual_stacked (tar-stack.R)
+#   4. recode_annual: pnadc_apply_periods + V2005 filter + deflate +
+#      per-capita components + demographic groupings (tar-recode.R)
+#   5. build_prepared_microdata: select dashboard cols, write .fst
 
 #' Thin writer: select dashboard-relevant columns from `annual_recoded` and
 #' write `prepared_microdata.fst`.
@@ -319,7 +307,17 @@ build_inequality_outputs <- function(prepared_microdata_path,
   decomp_path <- file.path(dest_dir, "income_decomposition_data.rds")
   saveRDS_atomic(decomp, decomp_path)
 
-  c(inequality_path, shares_path, lorenz_path, decomp_path)
+  paths <- c(inequality_path, shares_path, lorenz_path, decomp_path)
+  names(paths) <- c("inequality_data", "income_shares_data",
+                    "lorenz_data", "income_decomposition_data")
+  attr(paths, "latest_ref_month") <- as.character(max(d$ref_month_yyyymm, na.rm = TRUE))
+  attr(paths, "n_rows") <- c(
+    inequality_data           = nrow(ineq),
+    income_shares_data        = nrow(shares),
+    lorenz_data               = nrow(lorenz),
+    income_decomposition_data = nrow(decomp)
+  )
+  paths
 }
 
 # PR6 vectorized helpers (replaces ~6,500 nested-loop iterations with ~40
@@ -601,6 +599,8 @@ build_poverty_outputs <- function(prepared_microdata_path,
 
   dest <- file.path(dest_dir, "poverty_data.rds")
   saveRDS_atomic(poverty_data, dest)
+  attr(dest, "latest_ref_month") <- as.character(max(poverty_data$ref_month_yyyymm, na.rm = TRUE))
+  attr(dest, "n_rows") <- nrow(poverty_data)
   dest
 }
 
@@ -655,6 +655,8 @@ build_state_monthly <- function(quarterly_recoded, dest_path) {
   data.table::setorder(long, ref_month, uf_code, indicator)
 
   saveRDS_atomic(long, dest_path)
+  attr(dest_path, "latest_ref_month") <- as.character(max(long$ref_month, na.rm = TRUE))
+  attr(dest_path, "n_rows") <- nrow(long)
   dest_path
 }
 
@@ -675,6 +677,7 @@ build_brazil_states_sf <- function(brazil_states_sf_raw, dest_path) {
   sf::st_geometry(states_simple) <- "geometry"
 
   saveRDS_atomic(states_simple, dest_path)
+  attr(dest_path, "n_rows") <- nrow(states_simple)
   dest_path
 }
 

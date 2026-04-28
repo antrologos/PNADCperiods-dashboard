@@ -420,6 +420,18 @@ translations <- list(
     github = list(en = "GitHub Repository", pt = "Repositorio GitHub"),
     documentation = list(en = "Documentation", pt = "Documentacao"),
     ibge_sidra = list(en = "IBGE SIDRA", pt = "SIDRA IBGE"),
+    cran_header = list(
+      en = "Install from CRAN",
+      pt = "Instale a partir do CRAN"
+    ),
+    cran_intro = list(
+      en = "PNADCperiods is available on CRAN. The R package powers all computations behind this dashboard, including the mensalization algorithm and the SIDRA series fetcher. Install it locally to reproduce or extend any analysis shown here:",
+      pt = "O PNADCperiods esta disponivel no CRAN. O pacote R realiza todos os calculos por tras deste painel, incluindo o algoritmo de mensalizacao e o leitor das series do SIDRA. Instale-o localmente para reproduzir ou estender qualquer analise apresentada aqui:"
+    ),
+    cran_link_text = list(
+      en = "View on CRAN",
+      pt = "Ver no CRAN"
+    ),
     disclaimer = list(en = "Disclaimer", pt = "Aviso Legal"),
     disclaimer_text = list(
       en = "This dashboard presents estimates derived from official IBGE survey data. The mensalization methodology is an academic contribution and the monthly estimates are not official IBGE statistics. Users should consider the uncertainty inherent in survey-based estimates, especially for sub-national or sub-group analyses where sample sizes may be small.",

@@ -190,10 +190,10 @@ homeUI <- function(id) {
         tags$strong(textOutput(ns("footer_package_label"), inline = TRUE)),
         tags$br(),
         tags$a(
-          href = "https://github.com/antrologos/PNADCperiods",
+          href = "https://CRAN.R-project.org/package=PNADCperiods",
           target = "_blank",
           style = "font-style: italic;",
-          "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data. R package version v0.1.0."
+          textOutput(ns("footer_package_citation"), inline = TRUE)
         )
       ),
       # Original methodology reference
@@ -262,5 +262,16 @@ homeServer <- function(id, shared_data, lang = reactive("pt")) {
     output$footer_package_label <- renderText({ i18n("home.footer_package_label", get_lang()) })
     output$footer_methodology_label <- renderText({ i18n("home.footer_methodology_label", get_lang()) })
     output$footer_disclaimer <- renderText({ i18n("home.footer_disclaimer", get_lang()) })
+
+    output$footer_package_citation <- renderText({
+      ver <- tryCatch(
+        as.character(utils::packageVersion("PNADCperiods")),
+        error = function(e) "0.1.2"
+      )
+      sprintf(
+        "Barbosa, Rogerio J; Hecksher, Marcos. (2026). PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data. R package version v%s. CRAN.",
+        ver
+      )
+    })
   })
 }

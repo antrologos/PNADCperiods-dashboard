@@ -68,12 +68,12 @@ aboutUI <- function(id) {
         tags$pre(
           class = "bg-light p-3",
           style = "white-space: pre-wrap; font-size: 0.8rem; border-radius: 6px;",
-"@software{PNADCperiods,
-  author = {Barbosa, Rogerio J. and Hecksher, Marcos},
+"@manual{PNADCperiods,
   title = {PNADCperiods: Identify Reference Periods in Brazil's PNADC Survey Data},
+  author = {Barbosa, Rogerio J. and Hecksher, Marcos},
   year = {2026},
-  note = {R package version 0.1.0. R. Barbosa (Ceres-IESP/UERJ): package, dashboard, and website. M. Hecksher (Ipea): mensalization methodology.},
-  url = {https://github.com/antrologos/PNADCperiods}
+  note = {R package version 0.1.2. R. Barbosa (Ceres-IESP/UERJ): package, dashboard, and website. M. Hecksher (Ipea): mensalization methodology.},
+  url = {https://CRAN.R-project.org/package=PNADCperiods}
 }"
         ),
         tags$h6(class = "mt-3 mb-2", style = "font-weight: 600;",
@@ -153,6 +153,44 @@ aboutUI <- function(id) {
       )
     ),
 
+    # Install from CRAN card
+    div(
+      class = "card mb-4",
+      div(
+        class = "card-header",
+        tags$span(style = "font-weight: 600;",
+                  textOutput(ns("cran_header"), inline = TRUE))
+      ),
+      div(
+        class = "card-body",
+        tags$p(textOutput(ns("cran_intro"), inline = TRUE)),
+        tags$pre(
+          class = "bg-light p-3",
+          style = "border-radius: 6px; font-size: 0.85rem;",
+          'install.packages("PNADCperiods")'
+        ),
+        div(
+          class = "mt-2",
+          tags$a(
+            href = "https://CRAN.R-project.org/package=PNADCperiods",
+            target = "_blank",
+            tags$img(
+              src = "https://www.r-pkg.org/badges/version/PNADCperiods",
+              alt = "CRAN status",
+              style = "vertical-align: middle;"
+            )
+          ),
+          " ",
+          tags$a(
+            href = "https://CRAN.R-project.org/package=PNADCperiods",
+            target = "_blank",
+            class = "btn btn-sm btn-outline-primary ms-2",
+            textOutput(ns("cran_link_text"), inline = TRUE)
+          )
+        )
+      )
+    ),
+
     # Disclaimer card
     div(
       class = "card mb-4",
@@ -206,6 +244,9 @@ aboutServer <- function(id, shared_data, lang = reactive("pt")) {
     output$github_link <- renderText({ i18n("about.github", get_lang()) })
     output$documentation_link <- renderText({ i18n("about.documentation", get_lang()) })
     output$ibge_sidra_link <- renderText({ i18n("about.ibge_sidra", get_lang()) })
+    output$cran_header    <- renderText({ i18n("about.cran_header",    get_lang()) })
+    output$cran_intro     <- renderText({ i18n("about.cran_intro",     get_lang()) })
+    output$cran_link_text <- renderText({ i18n("about.cran_link_text", get_lang()) })
     output$disclaimer_header <- renderText({ i18n("about.disclaimer", get_lang()) })
     output$methodology_refs_header <- renderText({ i18n("about.methodology_refs_header", get_lang()) })
     output$disclaimer_text <- renderText({ i18n("about.disclaimer_text", get_lang()) })

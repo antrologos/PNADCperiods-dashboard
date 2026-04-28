@@ -80,6 +80,7 @@ list(
   # --------------------------------------------------------------------------
 
   tar_target(acervo_root,           tar_acervo_root()),
+  tar_target(acervo_paths,          acervo_subpaths(acervo_root)),
   tar_target(processed_cache_dir,   tar_processed_cache_dir()),
   tar_target(dashboard_data_dir,    tar_dashboard_data_dir()),
 
@@ -183,12 +184,6 @@ list(
     compute_inpc_factors(deflation_target_date)
   ),
 
-  # Brazil states geometries from geobr (hoisted from L3 builder).
-  tar_target(
-    brazil_states_sf_raw,
-    fetch_brazil_states_sf(year = 2020L)
-  ),
-
   # NOTE: sidra_geographic_raw + geographic_fallback_asset removed (this
   # session). The 3 SIDRA URLs hardcoded in fetch_sidra_geographic never
   # worked completely (2 of 3 always returned HTTP 400 — wrong tab/var
@@ -226,16 +221,6 @@ list(
     format = "file"
   ),
 
-  # Quarterly deflators ship as a single ZIP at
-  # Trimestral/Microdados/Documentacao/Deflatores.zip. Not currently
-  # consumed by the pipeline (build_state_monthly computes rates and
-  # population counts only — no monetary deflation) but kept in sync for
-  # future use and consistency with the user's local acervo structure.
-  tar_target(
-    quarterly_deflator_download,
-    ensure_quarterly_deflators_downloaded(acervo_root)
-  ),
-
   tar_target(
     quarterly_inventory,
     {
@@ -244,7 +229,7 @@ list(
       # changes and this inventory re-runs.
       force(external_state_check)
       inventory_local(
-        acervo_subpaths(acervo_root)$quarterly,
+        acervo_paths$quarterly,
         pattern = "^pnadc_\\d{4}-[1-4]q\\.fst$"
       )
     }
@@ -255,7 +240,7 @@ list(
     {
       force(external_state_check)
       inventory_local(
-        acervo_subpaths(acervo_root)$annual,
+        acervo_paths$annual,
         pattern = "^pnadc_\\d{4}_visita[1-5]\\.fst$"
       )
     }
@@ -271,7 +256,7 @@ list(
       force(external_state_check)  # auto-invalidate on deflator dir change
       force(deflator_download)     # ensure download attempted before listing
       inventory_local(
-        acervo_subpaths(acervo_root)$deflator,
+        acervo_paths$deflator,
         pattern = "^deflator_pnadc_\\d{4}\\.xls$",
         ignore.case = TRUE
       )
@@ -293,41 +278,33 @@ list(
 
   tar_target(
     quarterly_plan,
-    {
-      p <- plan_acervo_actions(
-        file_type = "quarterly",
-        expected = expected_quarters,
-        local_inventory = quarterly_inventory,
-        remote_catalog = external_state_check$ftp_catalog$trimestral$dados,
-        catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
-      )
-      p[, file_type := "quarterly"]
-      p[]
-    }
+    plan_acervo_actions(
+      file_type       = "quarterly",
+      expected        = expected_quarters,
+      local_inventory = quarterly_inventory,
+      remote_catalog  = external_state_check$ftp_catalog$trimestral$dados,
+      catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
+    )[, file_type := "quarterly"][]
   ),
 
   tar_target(
     annual_plan,
-    {
-      p <- plan_acervo_actions(
-        file_type = "annual",
-        expected = expected_visits,
-        local_inventory = annual_inventory,
-        remote_catalog = external_state_check$ftp_catalog$anual$dados,
-        catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
-      )
-      p[, file_type := "annual"]
-      p[]
-    }
+    plan_acervo_actions(
+      file_type       = "annual",
+      expected        = expected_visits,
+      local_inventory = annual_inventory,
+      remote_catalog  = external_state_check$ftp_catalog$anual$dados,
+      catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
+    )[, file_type := "annual"][]
   ),
 
   tar_target(
     quarterly_manifest_partial,
     apply_acervo_plan(
-      plan = quarterly_plan,
-      file_type = "quarterly",
-      dest_dir = acervo_subpaths(acervo_root)$quarterly,
-      sidecar = load_acervo_sidecar(acervo_sidecar_path),
+      plan         = quarterly_plan,
+      file_type    = "quarterly",
+      dest_dir     = acervo_paths$quarterly,
+      sidecar      = load_acervo_sidecar(acervo_sidecar_path),
       sidecar_path = acervo_sidecar_path
     ),
     error = "continue"
@@ -336,58 +313,24 @@ list(
   tar_target(
     annual_manifest_partial,
     apply_acervo_plan(
-      plan = annual_plan,
-      file_type = "annual",
-      dest_dir = acervo_subpaths(acervo_root)$annual,
-      sidecar = load_acervo_sidecar(acervo_sidecar_path),
+      plan         = annual_plan,
+      file_type    = "annual",
+      dest_dir     = acervo_paths$annual,
+      sidecar      = load_acervo_sidecar(acervo_sidecar_path),
       sidecar_path = acervo_sidecar_path
     ),
     error = "continue"
   ),
 
-  # Validate downloaded files (only those flagged DOWNLOADED_NEW)
+  # Validate downloaded files (only those flagged DOWNLOADED_NEW / _UPDATE)
   tar_target(
     quarterly_manifest,
-    {
-      m <- data.table::copy(quarterly_manifest_partial)
-      m[, validation_ok := TRUE]
-      m[, validation_reason := NA_character_]
-      idx <- which(m$status %in% c("DOWNLOADED_NEW", "DOWNLOADED_UPDATE") &
-                     !is.na(m$local_path))
-      for (i in idx) {
-        v <- validate_downloaded_file(m$local_path[i], "quarterly", m$year[i])
-        if (!isTRUE(v$ok)) {
-          m[i, `:=`(status = "INVALID",
-                    validation_ok = FALSE,
-                    validation_reason = v$reason)]
-        } else {
-          m[i, n_rows := v$n_rows]
-        }
-      }
-      m[]
-    }
+    validate_acervo_manifest(quarterly_manifest_partial, "quarterly")
   ),
 
   tar_target(
     annual_manifest,
-    {
-      m <- data.table::copy(annual_manifest_partial)
-      m[, validation_ok := TRUE]
-      m[, validation_reason := NA_character_]
-      idx <- which(m$status %in% c("DOWNLOADED_NEW", "DOWNLOADED_UPDATE") &
-                     !is.na(m$local_path))
-      for (i in idx) {
-        v <- validate_downloaded_file(m$local_path[i], "annual", m$year[i])
-        if (!isTRUE(v$ok)) {
-          m[i, `:=`(status = "INVALID",
-                    validation_ok = FALSE,
-                    validation_reason = v$reason)]
-        } else {
-          m[i, n_rows := v$n_rows]
-        }
-      }
-      m[]
-    }
+    validate_acervo_manifest(annual_manifest_partial, "annual")
   ),
 
   # Combined manifest used by Layer 2
@@ -399,17 +342,6 @@ list(
     )
   ),
 
-  # CSV sidecar (for git-diff inspection)
-  tar_target(
-    acervo_manifest_csv,
-    {
-      path <- file.path(processed_cache_dir, "acervo_manifest.csv")
-      write_manifest_csv(acervo_manifest, path)
-      path
-    },
-    format = "file"
-  ),
-
   # Deflator file path target. Filename matching is case-insensitive
   # because IBGE ships the file as `deflator_PNADC_YYYY.xls` (capital
   # PNADC), but the legacy code and config use lowercase in the regex.
@@ -418,14 +350,14 @@ list(
     {
       force(deflator_download)  # ensure latest XLS is on disk first
       candidates <- list.files(
-        acervo_subpaths(acervo_root)$deflator,
+        acervo_paths$deflator,
         pattern = "^deflator_pnadc_\\d{4}\\.xls$",
         full.names = TRUE,
         ignore.case = TRUE
       )
       if (!length(candidates)) {
         stop("Deflator file not found in ",
-             acervo_subpaths(acervo_root)$deflator, call. = FALSE)
+             acervo_paths$deflator, call. = FALSE)
       }
       # Pick the latest year (regex with ignore.case to match either case)
       yrs <- as.integer(sub(".*deflator_pnadc_(\\d{4})\\.xls", "\\1",
@@ -458,11 +390,15 @@ list(
     stack_quarterly(quarterly_manifest)
   ),
 
-  # Crosswalk now derives from the in-memory stack (PR3); previously
+  # Crosswalk derives from the in-memory stack (PR3); previously
   # re-read 56 .fst inside build_crosswalk_from_quarterly.
   tar_target(
     crosswalk_target,
-    build_crosswalk_from_stack(quarterly_stacked)
+    PNADCperiods::pnadc_identify_periods(
+      quarterly_stacked,
+      verbose = TRUE,
+      store_date_bounds = TRUE
+    )
   ),
 
   # PR3: ALL quarterly recoding (employed/informal/sector flags + apply_periods
@@ -567,13 +503,12 @@ list(
     format = "file"
   ),
 
-  # Both builders consume raw network outputs from L1
-  # (brazil_states_sf_raw, sidra_geographic_raw). Network calls happen
-  # exactly once per tar_make in the L1 targets; these are pure transforms.
+  # geobr fetch + simplify + write — geobr has internal cache so combining
+  # network call with the L3 transform doesn't refetch on every run.
   tar_target(
     brazil_states_sf_asset,
     build_brazil_states_sf(
-      brazil_states_sf_raw = brazil_states_sf_raw,
+      brazil_states_sf_raw = fetch_brazil_states_sf(year = 2020L),
       dest_path = file.path(dashboard_data_dest, "brazil_states_sf.rds")
     ),
     format = "file"
@@ -615,12 +550,53 @@ list(
   ),
 
   # --------------------------------------------------------------------------
+  # microdata_log.json — provenance sidecar bundled with .rds for the dashboard
+  # to display "Última atualização" badges. Mirror of sidra_log.json
+  # (produced by GitHub Actions).
+  # --------------------------------------------------------------------------
+
+  tar_target(
+    microdata_log,
+    {
+      force(dashboard_validation)
+      ineq_ref <- attr(inequality_assets, "latest_ref_month")
+      nrows    <- attr(inequality_assets, "n_rows")
+      log <- list(
+        fetched_at    = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+        pipeline_mode = Sys.getenv("PNADC_PIPELINE_MODE", "staging"),
+        assets = list(
+          inequality_data           = list(latest_ref_month = ineq_ref,
+                                           n_rows = nrows[["inequality_data"]]),
+          income_shares_data        = list(latest_ref_month = ineq_ref,
+                                           n_rows = nrows[["income_shares_data"]]),
+          lorenz_data               = list(latest_ref_month = ineq_ref,
+                                           n_rows = nrows[["lorenz_data"]]),
+          income_decomposition_data = list(latest_ref_month = ineq_ref,
+                                           n_rows = nrows[["income_decomposition_data"]]),
+          poverty_data       = list(latest_ref_month = attr(poverty_asset, "latest_ref_month"),
+                                    n_rows           = attr(poverty_asset, "n_rows")),
+          state_monthly_data = list(latest_ref_month = attr(state_monthly_asset, "latest_ref_month"),
+                                    n_rows           = attr(state_monthly_asset, "n_rows")),
+          brazil_states_sf   = list(latest_ref_month = NA,
+                                    n_rows           = attr(brazil_states_sf_asset, "n_rows"))
+        )
+      )
+      dest <- file.path(dashboard_data_dest, "microdata_log.json")
+      jsonlite::write_json(log, dest, pretty = TRUE,
+                           auto_unbox = TRUE, na = "null")
+      dest
+    },
+    format = "file"
+  ),
+
+  # --------------------------------------------------------------------------
   # End marker — depending on this target builds everything
   # --------------------------------------------------------------------------
 
   tar_target(
     pipeline_done,
     {
+      force(microdata_log)
       n_failed  <- sum(acervo_manifest$status == "FAILED",  na.rm = TRUE)
       n_invalid <- sum(acervo_manifest$status == "INVALID", na.rm = TRUE)
       if (n_failed > 0L) {

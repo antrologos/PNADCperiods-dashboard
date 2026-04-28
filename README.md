@@ -11,16 +11,23 @@ Interactive Shiny dashboard for exploring mensalized Brazilian labor market seri
 
 ## Quick Start
 
-### 1. Install dependencies
+### 1. Install PNADCperiods
 
 ```r
-install.packages(c("shiny", "bslib", "data.table", "ggplot2", "plotly", "DT", "bsicons", "shinyjs"))
+install.packages("PNADCperiods")
 
-# Install PNADCperiods from GitHub
-remotes::install_github("antrologos/PNADCperiods")
+# Development version (optional):
+# remotes::install_github("antrologos/PNADCperiods")
 ```
 
-### 2. Precompute data
+### 2. Install dashboard dependencies
+
+```r
+install.packages(c("shiny", "bslib", "data.table", "ggplot2",
+                   "plotly", "DT", "bsicons", "shinyjs"))
+```
+
+### 3. Precompute data
 
 ```r
 setwd("path/to/PNADCperiods-dashboard")
@@ -35,7 +42,7 @@ source("scripts/precompute_geographic.R")
 source("scripts/generate_sample_geographic_data.R")
 ```
 
-### 3. Run the app
+### 4. Run the app
 
 ```r
 shiny::runApp()
