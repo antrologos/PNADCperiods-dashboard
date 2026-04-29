@@ -988,22 +988,12 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
     # --------------------------------------------------------------------------
 
     output$last_updated <- renderText({
-      lang_val <- get_lang()
-      parts <- character(0)
-      if (!is.null(shared_data$sidra_latest_ref_month) &&
-          nchar(shared_data$sidra_latest_ref_month) >= 6L) {
-        ym <- shared_data$sidra_latest_ref_month
-        pretty <- paste0(substr(ym, 1L, 4L), "-", substr(ym, 5L, 6L))
-        parts <- c(parts, sprintf(i18n("messages.data_through", lang_val), pretty))
-      }
       if (!is.null(shared_data$sidra_fetched_at)) {
-        ts <- format(shared_data$sidra_fetched_at, "%Y-%m-%d %H:%M",
-                     tz = "America/Sao_Paulo")
-        parts <- c(parts, sprintf(i18n("messages.fetched_at", lang_val),
-                                  paste0(ts, " BRT")))
+        paste0(format(shared_data$sidra_fetched_at, "%Y-%m-%d %H:%M",
+                      tz = "America/Sao_Paulo"), " BRT")
+      } else {
+        i18n("messages.not_available", get_lang())
       }
-      if (length(parts) == 0L) i18n("messages.not_available", lang_val)
-      else paste(parts, collapse = " · ")
     })
 
     # --------------------------------------------------------------------------
