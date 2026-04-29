@@ -145,18 +145,11 @@ inequalityServer <- function(id, shared_data, lang) {
     })
 
     output$last_updated <- renderText({
-      lang_val <- lang()
-      ymv <- c(
-        if (!is.null(ineq_data()))       ineq_data()$ref_month_yyyymm,
-        if (!is.null(shares_data()))     shares_data()$ref_month_yyyymm,
-        if (!is.null(lorenz_data_all())) lorenz_data_all()$ref_month_yyyymm,
-        if (!is.null(decomp_data()))     decomp_data()$ref_month_yyyymm
-      )
-      ymv <- ymv[!is.na(ymv) & nchar(as.character(ymv)) >= 6L]
-      if (length(ymv) == 0L) return(i18n("messages.not_available", lang_val))
-      ym <- as.character(max(as.integer(ymv)))
-      pretty <- paste0(substr(ym, 1L, 4L), "-", substr(ym, 5L, 6L))
-      sprintf(i18n("messages.data_through", lang_val), pretty)
+      if (!is.null(shared_data$ineq_last_updated)) {
+        format(shared_data$ineq_last_updated, "%Y-%m-%d %H:%M")
+      } else {
+        i18n("messages.not_available", lang())
+      }
     })
 
     # ====================================================================

@@ -302,13 +302,24 @@ load_app_data <- function() {
   app_data$get_brazil_states_sf <- make_lazy_loader(sf_path)
 
   # Inequality tab (~2.35 MB)
-  app_data$get_inequality_data <- make_lazy_loader(file.path(data_dir, "inequality_data.rds"))
-  app_data$get_income_shares_data <- make_lazy_loader(file.path(data_dir, "income_shares_data.rds"))
-  app_data$get_lorenz_data <- make_lazy_loader(file.path(data_dir, "lorenz_data.rds"))
-  app_data$get_income_decomposition_data <- make_lazy_loader(file.path(data_dir, "income_decomposition_data.rds"))
+  ineq_path   <- file.path(data_dir, "inequality_data.rds")
+  shares_path <- file.path(data_dir, "income_shares_data.rds")
+  lorenz_path <- file.path(data_dir, "lorenz_data.rds")
+  decomp_path <- file.path(data_dir, "income_decomposition_data.rds")
+  app_data$get_inequality_data           <- make_lazy_loader(ineq_path)
+  app_data$get_income_shares_data        <- make_lazy_loader(shares_path)
+  app_data$get_lorenz_data               <- make_lazy_loader(lorenz_path)
+  app_data$get_income_decomposition_data <- make_lazy_loader(decomp_path)
+  ineq_existing <- c(ineq_path, shares_path, lorenz_path, decomp_path)
+  ineq_existing <- ineq_existing[file.exists(ineq_existing)]
+  app_data$ineq_last_updated <- if (length(ineq_existing))
+    max(file.mtime(ineq_existing)) else NULL
 
   # Poverty tab (~2.6 MB)
-  app_data$get_poverty_data <- make_lazy_loader(file.path(data_dir, "poverty_data.rds"))
+  pov_path <- file.path(data_dir, "poverty_data.rds")
+  app_data$get_poverty_data <- make_lazy_loader(pov_path)
+  app_data$pov_last_updated <- if (file.exists(pov_path))
+    file.mtime(pov_path) else NULL
 
   app_data
 }
