@@ -246,6 +246,8 @@ server <- function(input, output, session) {
     sidra_log = app_data$sidra_log,
     # Lazy loaders (load on first tab visit, then cached)
     geo_last_updated = app_data$geo_last_updated,
+    ineq_last_updated = app_data$ineq_last_updated,
+    pov_last_updated = app_data$pov_last_updated,
     get_geographic_data = app_data$get_geographic_data,
     get_brazil_states_sf = app_data$get_brazil_states_sf,
     get_inequality_data = app_data$get_inequality_data,
