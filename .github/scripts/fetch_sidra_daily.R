@@ -36,7 +36,6 @@ suppressPackageStartupMessages({
 # Source helpers from the dashboard repo (working dir = repo root).
 source("R/constants.R")
 source("R/utils_deseasonalize.R")
-source("R/utils_sidra_mask.R")
 
 # ------------------------------------------------------------------------------
 # Constants
@@ -181,26 +180,6 @@ tryCatch({
   )
   if (is.null(monthly_sidra) || nrow(monthly_sidra) == 0L) {
     stop("[mensalize] returned empty data.table")
-  }
-
-  # ---- Step 3.5: mask phantom mensalized values ----
-  # Workaround for PNADCperiods <= 0.1.1 (CRAN). When rolling_quarters has
-  # a trailing NA in some series, mensalize_sidra_series silently freezes
-  # cum<mesnotrim> and emits a phantom value (a copy of the value 3 months
-  # earlier in the same mesnotrim). Already fixed in commits f39279c +
-  # cf23849 of PNADCperiods, not yet on CRAN. Mirror the fix here so the
-  # release asset is always clean. Remove this step when 0.1.2+ is on CRAN.
-  cat("Step 3.5: mask phantom mensalized values\n")
-  n_phantom_before <- count_phantom_mensalized(monthly_sidra, rolling_quarters)
-  monthly_sidra <- mask_phantom_mensalized(monthly_sidra, rolling_quarters)
-  n_phantom_after <- count_phantom_mensalized(monthly_sidra, rolling_quarters)
-  cat(sprintf("  Masked %d phantom cell(s); residual: %d\n",
-              n_phantom_before - n_phantom_after, n_phantom_after))
-  if (n_phantom_after > 0L) {
-    stop(sprintf(
-      "Phantom mensalized values detected after masking: %d cell(s) with non-NA m_<series> where rq_<series> is NA. The asset is corrupt; investigate utils_sidra_mask.R or mensalize_sidra_series().",
-      n_phantom_after
-    ), call. = FALSE)
   }
 
   qs2::qs_save(monthly_sidra, file.path(OUTDIR, "monthly_sidra.qs2"))

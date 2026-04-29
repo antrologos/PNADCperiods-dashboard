@@ -80,9 +80,6 @@ source("R/utils_deseasonalize.R")
 # Source inequality/poverty utilities
 source("R/utils_inequality.R")
 
-# Source SIDRA phantom-month mask (workaround for PNADCperiods <= 0.1.1)
-source("R/utils_sidra_mask.R")
-
 # ==============================================================================
 # Default Language Setting
 # ==============================================================================
@@ -217,16 +214,6 @@ load_app_data <- function() {
     if (!is.null(res$fetched_at)) {
       fetched_times <- c(fetched_times, res$fetched_at)
     }
-  }
-
-  # Defensive runtime mask: even if the release was produced before the
-  # Action workaround was deployed (or the Action regressed), strip phantom
-  # mensalized values before any module sees them. See R/utils_sidra_mask.R
-  # for context. Idempotent when the release is already clean.
-  if (!is.null(app_data$monthly_sidra) && !is.null(app_data$rolling_quarters)) {
-    app_data$monthly_sidra <- mask_phantom_mensalized(
-      app_data$monthly_sidra, app_data$rolling_quarters
-    )
   }
 
   # Read provenance from the log JSON (defensive: any field can be missing).
