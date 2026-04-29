@@ -997,9 +997,10 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         parts <- c(parts, sprintf(i18n("messages.data_through", lang_val), pretty))
       }
       if (!is.null(shared_data$sidra_fetched_at)) {
-        ts <- format(shared_data$sidra_fetched_at, "%Y-%m-%d %H:%M", tz = "UTC")
+        ts <- format(shared_data$sidra_fetched_at, "%Y-%m-%d %H:%M",
+                     tz = "America/Sao_Paulo")
         parts <- c(parts, sprintf(i18n("messages.fetched_at", lang_val),
-                                  paste0(ts, " UTC")))
+                                  paste0(ts, " BRT")))
       }
       if (length(parts) == 0L) i18n("messages.not_available", lang_val)
       else paste(parts, collapse = " · ")

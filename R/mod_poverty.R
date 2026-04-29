@@ -131,7 +131,8 @@ povertyServer <- function(id, shared_data, lang) {
 
     output$last_updated <- renderText({
       if (!is.null(shared_data$pov_last_updated)) {
-        format(shared_data$pov_last_updated, "%Y-%m-%d %H:%M")
+        paste0(format(shared_data$pov_last_updated, "%Y-%m-%d %H:%M",
+                      tz = "America/Sao_Paulo"), " BRT")
       } else {
         i18n("messages.not_available", lang())
       }

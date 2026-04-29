@@ -861,7 +861,8 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
 
     output$last_updated <- renderText({
       if (!is.null(shared_data$geo_last_updated)) {
-        format(shared_data$geo_last_updated, "%Y-%m-%d %H:%M")
+        paste0(format(shared_data$geo_last_updated, "%Y-%m-%d %H:%M",
+                      tz = "America/Sao_Paulo"), " BRT")
       } else {
         "Not available"
       }
