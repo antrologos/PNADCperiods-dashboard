@@ -901,31 +901,20 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         result[, monthly := monthly / 1000]
       }
 
-      # Add quarterly data if available
-      # Note: Rolling quarters align with the 2nd month (middle), not the 3rd (final)
-      # So we shift anomesfinaltrimmovel back by 1 month
+      # Add quarterly data if available.
+      # Alignment: rolling quarter plotted at its END month (anomesfinaltrimmovel,
+      # IBGE convention). This keeps the last monthly point and the last quarterly
+      # point at the same x-coordinate — they update in lockstep at the right edge.
+      # Side effect: the first two months of any series have NA in `quarterly`
+      # (no rolling quarter ends in/before them).
       if (!is.null(shared_data$rolling_quarters)) {
         rq <- shared_data$rolling_quarters
         quarterly_col <- input$series
         if (quarterly_col %in% names(rq)) {
-          # Shift the rolling quarter final month back by 1 to align with middle month
-          rq_yyyymm <- as.integer(rq$anomesfinaltrimmovel)
-          rq_year <- rq_yyyymm %/% 100
-          rq_month <- rq_yyyymm %% 100
-          # Shift back 1 month
-          rq_month_shifted <- rq_month - 1L
-          rq_year_shifted <- rq_year
-          # Handle January -> December of previous year
-          rq_year_shifted[rq_month_shifted == 0L] <- rq_year[rq_month_shifted == 0L] - 1L
-          rq_month_shifted[rq_month_shifted == 0L] <- 12L
-          # Create shifted anomesexato
-          rq_anomesexato_shifted <- rq_year_shifted * 100L + rq_month_shifted
-
           rq_subset <- data.table(
-            anomesexato = rq_anomesexato_shifted,
+            anomesexato = as.integer(rq$anomesfinaltrimmovel),
             quarterly = rq[[quarterly_col]]
           )
-          # Convert quarterly to millions if data is in thousands
           if (series_unit == "thousands") {
             rq_subset[, quarterly := quarterly / 1000]
           }

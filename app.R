@@ -258,6 +258,59 @@ server <- function(input, output, session) {
   )
 
   # --------------------------------------------------------------------------
+  # Periodic SIDRA refresh
+  # --------------------------------------------------------------------------
+  # Workers no shinyapps.io ficam aquecidos por horas; load_app_data() roda
+  # uma vez por processo R. Sem o bloco abaixo, o dashboard serve dados do
+  # boot do worker indefinidamente, mesmo após o pipeline diário do Actions
+  # publicar uma release nova. A cada 30 min, este observer:
+  #   1. Lê sidra_log.json da release (~1 KB).
+  #   2. Se fetched_at é mais novo que o atual, re-puxa os 4 .qs2.
+  #   3. Atualiza shared_data in-place — dispara re-render dos gráficos.
+  # Falhas de rede são silenciosas; próximo tick tenta de novo.
+  sidra_refresh_timer <- reactiveTimer(30 * 60 * 1000)
+
+  observe({
+    sidra_refresh_timer()
+
+    log <- fetch_sidra_log_from_release()
+    if (is.null(log) || is.null(log[["fetched_at"]])) return()
+
+    new_at <- tryCatch(
+      as.POSIXct(log[["fetched_at"]],
+                 format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+      error = function(e) NULL
+    )
+    if (is.null(new_at) || is.na(new_at)) return()
+
+    cur_at <- isolate(shared_data$sidra_fetched_at)
+    if (!is.null(cur_at) && !is.na(cur_at) && new_at <= cur_at) return()
+
+    message("[sidra-refresh] release newer (", new_at, " > ",
+            cur_at %||% "NA", "); re-fetching qs2 ...")
+
+    staged <- list()
+    for (slot in names(RELEASE_QS2_FILES)) {
+      res <- fetch_sidra_qs_from_release(RELEASE_QS2_FILES[[slot]],
+                                         fallback_path = NULL)
+      if (is.null(res$data) || res$source != "release") {
+        message("[sidra-refresh] aborted: failed on ", slot)
+        return()
+      }
+      staged[[slot]] <- res$data
+    }
+
+    for (slot in names(staged)) shared_data[[slot]] <- staged[[slot]]
+    shared_data$sidra_log              <- log
+    shared_data$sidra_fetched_at       <- new_at
+    shared_data$sidra_latest_ref_month <- log[["latest_ref_month"]]
+    shared_data$sidra_source           <- "release"
+    shared_data$last_updated           <- new_at
+
+    message("[sidra-refresh] OK; new fetched_at = ", new_at)
+  })
+
+  # --------------------------------------------------------------------------
   # Module Servers (pass language reactive)
   # --------------------------------------------------------------------------
 
