@@ -71,6 +71,9 @@ scripts/debug_*.R
 scripts/fix_*.R
 scripts/verify_*.R
 
+# Local reference data used by ad-hoc verification scripts (verify_*.R)
+scripts/reference/
+
 # Test output (keep tests/testthat/*.R tracked; only ignore generated bits)
 tests/testthat/_snaps/
 tests/testthat/Rplots.pdf
