@@ -7,7 +7,7 @@ library(seasonal)
 
 cat("=== Detailed X-13 Diagnostic ===\n\n")
 
-setwd("d:/Dropbox/Artigos/mensalizacao_pnad/PNADCperiods-dashboard")
+setwd(here::here())
 
 # Load data
 monthly_sidra <- readRDS("data/monthly_sidra.rds")

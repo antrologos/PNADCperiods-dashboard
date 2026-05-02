@@ -29,8 +29,15 @@ library(fst)
 # Paths
 # ==============================================================================
 
-project_dir   <- "d:/Dropbox/Artigos/mensalizacao_pnad"
-dashboard_dir <- file.path(project_dir, "PNADCperiods-dashboard")
+# NOTE: legacy precompute script. Superseded by update_via_targets/. Set
+# PNADC_LEGACY_PROJECT_DIR to the directory holding data/processed/prepared_microdata.fst
+# if you still need to run this manually.
+project_dir   <- Sys.getenv("PNADC_LEGACY_PROJECT_DIR", unset = "")
+if (!nzchar(project_dir)) {
+  stop("PNADC_LEGACY_PROJECT_DIR not set; this legacy script needs the cache ",
+       "directory holding data/processed/prepared_microdata.fst.")
+}
+dashboard_dir <- here::here()
 data_dir      <- file.path(dashboard_dir, "data")
 
 # Source utility functions

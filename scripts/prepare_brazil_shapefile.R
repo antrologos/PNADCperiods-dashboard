@@ -24,7 +24,7 @@ library(sf)
 library(rmapshaper)
 
 # Set app directory
-app_dir <- "d:/Dropbox/Artigos/mensalizacao_pnad/PNADCperiods-dashboard"
+app_dir <- here::here()
 
 cat("Downloading Brazil state boundaries from IBGE via geobr...\n")
 

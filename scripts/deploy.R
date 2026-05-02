@@ -32,9 +32,7 @@ library(rsconnect)
 # Configuration
 # ------------------------------------------------------------------------------
 
-APP_DIR  <- normalizePath(
-  "D:/Dropbox/Artigos/mensalizacao_pnad/PNADCperiods-dashboard"
-)
+APP_DIR  <- normalizePath(here::here())
 APP_NAME <- "PNADCperiods-dashboard"  # canonical slug; URL: /PNADCperiods-dashboard/
 DATA_DIR <- file.path(APP_DIR, "data")
 

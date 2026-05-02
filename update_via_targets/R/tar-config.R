@@ -20,14 +20,9 @@ tar_acervo_root <- function() {
   Sys.getenv("PNADC_ACERVO_ROOT", "D:/Dropbox/Bancos_Dados/PNADC")
 }
 
-tar_project_root <- function() {
-  # Pipeline lives at: <project>/PNADCperiods-dashboard/update_via_targets/
-  # Project root is two levels up.
-  normalizePath(file.path(getwd(), "..", ".."), winslash = "/", mustWork = FALSE)
-}
-
 tar_dashboard_root <- function() {
-  # Dashboard lives at: <project>/PNADCperiods-dashboard/
+  # Pipeline lives at: <dashboard>/update_via_targets/. Dashboard root is one
+  # level up from the working directory used by tar_make().
   normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE)
 }
 
@@ -35,11 +30,17 @@ tar_dashboard_data_dir <- function() {
   file.path(tar_dashboard_root(), "data")
 }
 
+# Cache directory for prepared_microdata.fst (~340 MB). Always lives outside
+# the dashboard repo. Set PNADC_PROCESSED_DIR to point at a stable directory
+# (re-running the pipeline against an existing cache avoids a 30-60 min rebuild).
 tar_processed_cache_dir <- function() {
-  Sys.getenv(
-    "PNADC_PROCESSED_DIR",
-    file.path(tar_project_root(), "data", "processed")
-  )
+  dir <- Sys.getenv("PNADC_PROCESSED_DIR", unset = "")
+  if (!nzchar(dir)) {
+    stop("PNADC_PROCESSED_DIR is not set. Point it to a directory where the ",
+         "targets pipeline can cache prepared_microdata.fst, e.g.\n",
+         "  Sys.setenv(PNADC_PROCESSED_DIR = \"D:/Dropbox/Bancos_Dados/PNADC/processed_cache\")")
+  }
+  dir
 }
 
 # ------------------------------------------------------------------------------

@@ -11,7 +11,7 @@ library(data.table)
 cat("=== Updating Series Metadata Only ===\n\n")
 
 # Change to dashboard directory
-setwd("d:/Dropbox/Artigos/mensalizacao_pnad/PNADCperiods-dashboard")
+setwd(here::here())
 
 # Generate new metadata from package
 cat("Generating metadata from PNADCperiods package...\n")

@@ -8,7 +8,7 @@ library(data.table)
 cat("=== X-13 ARIMA Diagnostic ===\n\n")
 
 # Set working directory
-setwd("d:/Dropbox/Artigos/mensalizacao_pnad/PNADCperiods-dashboard")
+setwd(here::here())
 
 # ------------------------------------------------------------------------------
 # 1. Check if data files exist

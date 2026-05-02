@@ -34,18 +34,26 @@ library(deflateBR)
 # Paths
 # ==============================================================================
 
-project_dir        <- "d:/Dropbox/Artigos/mensalizacao_pnad"
-pkg_dir            <- file.path(project_dir, "PNADCperiods")
-dashboard_dir      <- file.path(project_dir, "PNADCperiods-dashboard")
-pnad_quarterly_dir <- "D:/Dropbox/Bancos_Dados/PNADC/Trimestral/Dados"
-pnad_annual_dir    <- "D:/Dropbox/Bancos_Dados/PNADC/Anual/visitas"
+# NOTE: legacy precompute script. Superseded by update_via_targets/. Set
+# PNADC_LEGACY_PROJECT_DIR to the directory holding data/processed/ if you
+# still need to run this manually. PNADCperiods is now loaded from CRAN.
+project_dir        <- Sys.getenv("PNADC_LEGACY_PROJECT_DIR", unset = "")
+if (!nzchar(project_dir)) {
+  stop("PNADC_LEGACY_PROJECT_DIR not set; this legacy script writes to ",
+       "<dir>/data/processed/prepared_microdata.fst.")
+}
+dashboard_dir      <- here::here()
+pnad_quarterly_dir <- Sys.getenv("PNADC_QUARTERLY_DIR",
+                                 "D:/Dropbox/Bancos_Dados/PNADC/Trimestral/Dados")
+pnad_annual_dir    <- Sys.getenv("PNADC_ANNUAL_DIR",
+                                 "D:/Dropbox/Bancos_Dados/PNADC/Anual/visitas")
 data_output_dir    <- file.path(dashboard_dir, "data")
 
 # Create output directory
 dir.create(data_output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# Load PNADCperiods package
-devtools::load_all(pkg_dir)
+# Load PNADCperiods package (CRAN install).
+library(PNADCperiods)
 
 # Source utility functions
 source(file.path(dashboard_dir, "R", "utils_inequality.R"))

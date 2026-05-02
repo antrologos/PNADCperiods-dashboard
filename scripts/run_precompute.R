@@ -1,5 +1,5 @@
 # Set working directory to app root
-setwd("d:/Dropbox/Artigos/mensalizacao_pnad/PNADCperiods-dashboard")
+setwd(here::here())
 
 # Run precompute script
 source("scripts/precompute_sidra.R")
