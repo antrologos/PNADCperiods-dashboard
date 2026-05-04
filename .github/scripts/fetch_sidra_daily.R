@@ -36,6 +36,13 @@ suppressPackageStartupMessages({
 # Source helpers from the dashboard repo (working dir = repo root).
 source("R/constants.R")
 source("R/utils_deseasonalize.R")
+source(".github/scripts/utils_pure_cumsum_patch.R")
+
+# TEMPORARY: bypass .apply_final_adjustment in PNADCperiods <= 0.1.2 to
+# publish pure-cumsum monthly values. Remove together with the source()
+# above when PNADCperiods >= 0.1.3 reaches CRAN. See
+# .github/scripts/utils_pure_cumsum_patch.R header for full context.
+patch_status <- apply_pure_cumsum_patch()
 
 # ------------------------------------------------------------------------------
 # Constants
@@ -66,20 +73,23 @@ dir.create(OUTDIR, showWarnings = FALSE, recursive = TRUE)
 t0 <- Sys.time()
 
 runlog <- list2env(list(
-  fetched_at        = format(t0, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-  status            = "running",
-  total_series      = length(TOP_SERIES_FOR_PRECOMPUTE),
-  success           = 0L,
-  failed_ids        = character(),
-  warnings          = character(),
-  duration_seconds  = NA_real_,
-  actions_run_url   = Sys.getenv("ACTIONS_RUN_URL", ""),
-  fetch_retry_count = 0L,
-  latest_ref_month  = NA_character_,
-  data_vintage      = NA_character_,
-  ftp_ok            = NA,
-  is_stale          = NA,
-  asset_md5         = list()
+  fetched_at           = format(t0, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+  status               = "running",
+  total_series         = length(TOP_SERIES_FOR_PRECOMPUTE),
+  success              = 0L,
+  failed_ids           = character(),
+  warnings             = character(),
+  duration_seconds     = NA_real_,
+  actions_run_url      = Sys.getenv("ACTIONS_RUN_URL", ""),
+  fetch_retry_count    = 0L,
+  latest_ref_month     = NA_character_,
+  data_vintage         = NA_character_,
+  ftp_ok               = NA,
+  is_stale             = NA,
+  pnadcperiods_version = as.character(utils::packageVersion("PNADCperiods")),
+  mensalization_method = if (identical(patch_status, "applied"))
+                           "pure_cumsum_patch_v1" else "package_default",
+  asset_md5            = list()
 ))
 
 write_log <- function() {

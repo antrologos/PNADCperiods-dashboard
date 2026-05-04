@@ -392,6 +392,10 @@ translations <- list(
       en = "Computing monthly aggregates using the calibrated weights",
       pt = "Calcular agregados mensais usando os pesos calibrados"
     ),
+    methodology_note = list(
+      en = "Note (since 2026-05-04): each of the three month-position sub-series is built independently from its own starting point. Once a month is published, its value remains stable across subsequent IBGE releases.",
+      pt = "Observacao (desde 2026-05-04): cada uma das tres subseries por posicao no trimestre e construida independentemente a partir de seu ponto inicial. Uma vez publicado, o valor de um mes permanece estavel nas divulgacoes seguintes do IBGE."
+    ),
     data_sources = list(en = "Data Sources", pt = "Fontes de Dados"),
     data_source_sidra = list(
       en = "Official IBGE statistics (86 series)",

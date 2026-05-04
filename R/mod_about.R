@@ -34,6 +34,8 @@ aboutUI <- function(id) {
           tags$li(textOutput(ns("methodology_step2"), inline = TRUE)),
           tags$li(textOutput(ns("methodology_step3"), inline = TRUE))
         ),
+        tags$p(class = "text-muted", style = "font-size: 0.85rem;",
+               textOutput(ns("methodology_note"), inline = TRUE)),
 
         tags$h5(textOutput(ns("data_sources_header"), inline = TRUE)),
         tags$ul(
@@ -233,6 +235,7 @@ aboutServer <- function(id, shared_data, lang = reactive("pt")) {
     output$methodology_step1 <- renderText({ i18n("about.methodology_step1", get_lang()) })
     output$methodology_step2 <- renderText({ i18n("about.methodology_step2", get_lang()) })
     output$methodology_step3 <- renderText({ i18n("about.methodology_step3", get_lang()) })
+    output$methodology_note <- renderText({ i18n("about.methodology_note", get_lang()) })
     output$data_sources_header <- renderText({ i18n("about.data_sources", get_lang()) })
     output$data_source_sidra <- renderText({ i18n("about.data_source_sidra", get_lang()) })
     output$data_source_microdata <- renderText({ i18n("about.data_source_microdata", get_lang()) })
