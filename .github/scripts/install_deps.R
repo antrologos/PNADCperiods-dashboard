@@ -23,11 +23,29 @@ dir.create(lib, showWarnings = FALSE, recursive = TRUE)
 # the lib persistent across runs, so this is fast on cache hits.
 already <- rownames(installed.packages(lib.loc = lib))
 missing <- setdiff(PKGS, already)
-if (length(missing)) {
-  cat("Installing:", paste(missing, collapse = ", "), "\n")
-  install.packages(missing, repos = RSPM, lib = lib, Ncpus = 2)
+
+# Minimum required versions. Force upgrade when the cached lib is too
+# old (e.g. cache pinned PNADCperiods 0.1.1 while CRAN now ships 0.1.2;
+# the trailing-NA mask the dashboard relies on landed in 0.1.2).
+MIN_VERSIONS <- list(PNADCperiods = "0.1.2")
+upgrade <- character(0)
+for (p in names(MIN_VERSIONS)) {
+  if (p %in% already) {
+    cur <- as.character(packageVersion(p, lib.loc = lib))
+    if (utils::compareVersion(cur, MIN_VERSIONS[[p]]) < 0) {
+      cat(sprintf("Upgrade required: %s %s -> >= %s\n",
+                  p, cur, MIN_VERSIONS[[p]]))
+      upgrade <- c(upgrade, p)
+    }
+  }
+}
+
+to_install <- unique(c(missing, upgrade))
+if (length(to_install)) {
+  cat("Installing:", paste(to_install, collapse = ", "), "\n")
+  install.packages(to_install, repos = RSPM, lib = lib, Ncpus = 2)
 } else {
-  cat("All packages already cached.\n")
+  cat("All packages already cached at required versions.\n")
 }
 
 cat("\nVersions:\n")
