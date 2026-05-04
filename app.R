@@ -297,6 +297,9 @@ server <- function(input, output, session) {
         message("[sidra-refresh] aborted: failed on ", slot)
         return()
       }
+      if (slot == "series_metadata") {
+        res$data <- apply_dashboard_taxonomy(res$data)
+      }
       staged[[slot]] <- res$data
     }
 

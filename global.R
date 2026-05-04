@@ -80,6 +80,9 @@ source("R/utils_deseasonalize.R")
 # Source inequality/poverty utilities
 source("R/utils_inequality.R")
 
+# Source dashboard-side taxonomy remap for SIDRA series metadata
+source("R/series_taxonomy.R")
+
 # ==============================================================================
 # Default Language Setting
 # ==============================================================================
@@ -209,6 +212,9 @@ load_app_data <- function() {
     fb_rds <- file.path(data_dir, sub("\\.qs2$", ".rds", fname))
     fallback <- if (file.exists(fb_qs2)) fb_qs2 else fb_rds
     res <- fetch_sidra_qs_from_release(fname, fallback_path = fallback)
+    if (slot == "series_metadata") {
+      res$data <- apply_dashboard_taxonomy(res$data)
+    }
     app_data[[slot]] <- res$data
     sources <- c(sources, res$source)
     if (!is.null(res$fetched_at)) {

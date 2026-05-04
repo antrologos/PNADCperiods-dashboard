@@ -739,8 +739,9 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
 
       # Default selection based on theme
       default_cat <- if (length(category_choices) > 0) {
-        if (input$theme == DEFAULT_THEME && "unemployment" %in% category_choices) {
-          "unemployment"
+        if (input$theme == DEFAULT_THEME &&
+            "participation_and_occupation" %in% category_choices) {
+          "participation_and_occupation"
         } else {
           category_choices[1]
         }
@@ -818,8 +819,9 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
 
       # Always select the first available series
       default_series <- if (length(series_choices) > 0) {
-        # For unemployment category, prefer unemployment rate
-        if (input$theme_category == "unemployment" && "taxadesocup" %in% series_choices) {
+        # For the participation & occupation category, prefer unemployment rate
+        if (input$theme_category == "participation_and_occupation" &&
+            "taxadesocup" %in% series_choices) {
           "taxadesocup"
         } else {
           series_choices[1]

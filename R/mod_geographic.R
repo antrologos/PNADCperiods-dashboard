@@ -55,10 +55,10 @@ uf_mapping <- data.table::data.table(
 # Organized hierarchically: theme -> theme_category -> indicator
 geographic_indicators <- data.table::data.table(
   indicator_id = c(
-    # Labor market > Unemployment
+    # Labor market > Participation & Occupation
     "taxadesocup", "unemployed",
-    # Labor market > Participation
     "taxapartic", "nivelocup", "pea", "employed",
+    "taxacontribprev",
     # Labor market > Underutilization
     "taxasubocuphoras", "taxainformal",
     # Labor market > Employment type
@@ -66,15 +66,11 @@ geographic_indicators <- data.table::data.table(
     # Labor market > Economic sector
     "agropecuaria", "industria", "construcao", "comercio", "servicos",
     # Demographics > Working age
-    "pop14mais", "fora_forca",
-    # Social protection > Social security
-    "taxacontribprev"
+    "pop14mais", "fora_forca"
   ),
   theme = c(
-    # Unemployment
-    rep("labor_market", 2),
-    # Participation
-    rep("labor_market", 4),
+    # Participation & Occupation
+    rep("labor_market", 7),
     # Underutilization
     rep("labor_market", 2),
     # Employment type
@@ -82,15 +78,12 @@ geographic_indicators <- data.table::data.table(
     # Economic sector
     rep("labor_market", 5),
     # Demographics
-    rep("demographics", 2),
-    # Social protection
-    "social_protection"
+    rep("demographics", 2)
   ),
   theme_category = c(
-    # Unemployment
-    rep("unemployment", 2),
-    # Participation
-    rep("participation", 4),
+    # Participation & Occupation (collapses former unemployment / participation /
+    # social_security into a single category)
+    rep("participation_and_occupation", 7),
     # Underutilization
     rep("underutilization", 2),
     # Employment type
@@ -98,19 +91,17 @@ geographic_indicators <- data.table::data.table(
     # Economic sector
     rep("economic_sector", 5),
     # Demographics
-    rep("working_age", 2),
-    # Social protection
-    "social_security"
+    rep("working_age", 2)
   ),
   description_pt = c(
-    # Unemployment
+    # Participation & Occupation
     "Taxa de desocupacao",
     "Populacao desocupada",
-    # Participation
     "Taxa de participacao na forca de trabalho",
     "Nivel de ocupacao",
     "Forca de trabalho (PEA)",
     "Populacao ocupada",
+    "Taxa de contribuicao previdenciaria",
     # Underutilization
     "Taxa de subocupacao por insuficiencia de horas",
     "Taxa de informalidade",
@@ -128,19 +119,17 @@ geographic_indicators <- data.table::data.table(
     "Servicos",
     # Demographics
     "Populacao de 14 anos ou mais",
-    "Fora da forca de trabalho",
-    # Social protection
-    "Taxa de contribuicao previdenciaria"
+    "Fora da forca de trabalho"
   ),
   description_en = c(
-    # Unemployment
+    # Participation & Occupation
     "Unemployment rate",
     "Unemployed population",
-    # Participation
     "Labor force participation rate",
     "Employment-population ratio",
     "Labor force",
     "Employed population",
+    "Social security contribution rate",
     # Underutilization
     "Time-related underemployment rate",
     "Informality rate",
@@ -158,31 +147,27 @@ geographic_indicators <- data.table::data.table(
     "Services",
     # Demographics
     "Population aged 14 and over",
-    "Not in labor force",
-    # Social protection
-    "Social security contribution rate"
+    "Not in labor force"
   ),
   unit = c(
-    # Unemployment: rate, level
+    # Participation & Occupation
     "percent", "thousands",
-    # Participation: rate, rate, level, level
     "percent", "percent", "thousands", "thousands",
-    # Underutilization: rate, rate
+    "percent",
+    # Underutilization
     "percent", "percent",
-    # Employment type: all levels
+    # Employment type
     rep("thousands", 5),
-    # Economic sector: all levels
+    # Economic sector
     rep("thousands", 5),
-    # Demographics: all levels
-    rep("thousands", 2),
-    # Social protection: rate
-    "percent"
+    # Demographics
+    rep("thousands", 2)
   ),
   color_scale = c(
-    # Unemployment
+    # Participation & Occupation
     "Reds", "Reds",
-    # Participation
     "Blues", "Greens", "Blues", "Greens",
+    "Blues",
     # Underutilization
     "Oranges", "Purples",
     # Employment type
@@ -190,9 +175,7 @@ geographic_indicators <- data.table::data.table(
     # Economic sector
     rep("Greens", 5),
     # Demographics
-    rep("Blues", 2),
-    # Social protection
-    "Blues"
+    rep("Blues", 2)
   )
 )
 
@@ -732,8 +715,9 @@ geographicServer <- function(id, shared_data, lang = reactive("pt")) {
 
       # Default selection based on theme
       default_cat <- if (length(category_choices) > 0) {
-        if (input$theme == "labor_market" && "unemployment" %in% category_choices) {
-          "unemployment"
+        if (input$theme == "labor_market" &&
+            "participation_and_occupation" %in% category_choices) {
+          "participation_and_occupation"
         } else {
           category_choices[1]
         }

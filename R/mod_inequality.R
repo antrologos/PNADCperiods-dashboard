@@ -161,7 +161,7 @@ inequalityServer <- function(id, shared_data, lang) {
       lang_val <- lang()
       c(
         setNames("income_level", i18n("inequality.theme_income_level", lang_val)),
-        setNames("distribution", i18n("inequality.theme_distribution", lang_val)),
+        setNames("inequality_indexes", i18n("inequality.theme_inequality_indexes", lang_val)),
         setNames("shares", i18n("inequality.theme_shares", lang_val)),
         setNames("lorenz", i18n("inequality.theme_lorenz", lang_val)),
         setNames("decomposition", i18n("inequality.theme_decomposition", lang_val))
@@ -171,7 +171,7 @@ inequalityServer <- function(id, shared_data, lang) {
     output$theme_selector <- renderUI({
       selectInput(ns("theme"), i18n("inequality.theme", lang()),
                   choices = theme_choices(),
-                  selected = isolate(input$theme) %||% "distribution")
+                  selected = isolate(input$theme) %||% "inequality_indexes")
     })
 
     # ====================================================================
@@ -181,14 +181,14 @@ inequalityServer <- function(id, shared_data, lang) {
     measure_choices <- reactive({
       lang_val <- lang()
       theme <- input$theme
-      if (is.null(theme)) theme <- "distribution"
+      if (is.null(theme)) theme <- "inequality_indexes"
 
       switch(theme,
         income_level = c(
           setNames("mean_income", i18n("inequality.mean_income", lang_val)),
           setNames("median_income", i18n("inequality.median_income", lang_val))
         ),
-        distribution = c(
+        inequality_indexes = c(
           setNames("gini", i18n("inequality.gini", lang_val)),
           setNames("palma", i18n("inequality.palma", lang_val)),
           setNames("p90p10", i18n("inequality.p90p10", lang_val)),
@@ -441,7 +441,7 @@ inequalityServer <- function(id, shared_data, lang) {
       }
 
       # Filter by measure (for time series themes)
-      if (theme %in% c("income_level", "distribution") && !is.null(sel_measure)) {
+      if (theme %in% c("income_level", "inequality_indexes") && !is.null(sel_measure)) {
         sub <- sub[measure == sel_measure]
       }
 
@@ -892,7 +892,7 @@ inequalityServer <- function(id, shared_data, lang) {
         lang_val <- lang()
 
         # Time series themes
-        if (theme %in% c("income_level", "distribution")) {
+        if (theme %in% c("income_level", "inequality_indexes")) {
           sub <- filtered_data()
           if (is.null(sub) || nrow(sub) == 0) return()
 
