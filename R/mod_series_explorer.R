@@ -1397,6 +1397,11 @@ seriesExplorerServer <- function(id, shared_data, lang = reactive("pt")) {
         yaxis_config$tickprefix <- "R$ "
       }
 
+      # Add millions suffix for currency series stored in millions of BRL
+      if (series_unit == "currency_millions") {
+        yaxis_config$ticksuffix <- if (lang_val == "en") " M" else " mi"
+      }
+
       # Add % suffix for percent series
       if (series_unit == "percent") {
         yaxis_config$ticksuffix <- "%"

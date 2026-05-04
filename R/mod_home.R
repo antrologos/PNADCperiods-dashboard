@@ -159,6 +159,12 @@ homeUI <- function(id) {
     div(
       class = "d-flex justify-content-center gap-3 mb-4 flex-wrap",
       tags$a(
+        href = "https://CRAN.R-project.org/package=PNADCperiods",
+        target = "_blank",
+        class = "btn btn-outline-primary",
+        bs_icon("box-seam"), " CRAN"
+      ),
+      tags$a(
         href = "https://github.com/antrologos/PNADCperiods",
         target = "_blank",
         class = "btn btn-outline-primary",

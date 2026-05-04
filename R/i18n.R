@@ -19,7 +19,7 @@ translations <- list(
   # Navigation & Layout
   # ============================================================================
   nav = list(
-    series_explorer = list(en = "Series Explorer", pt = "Explorador de Séries"),
+    series_explorer = list(en = "Monthly SIDRA Series", pt = "Séries SIDRA Mensais"),
     geographic = list(en = "Geographic", pt = "Geográfico"),
     inequality = list(en = "Inequality", pt = "Desigualdade"),
     poverty = list(en = "Poverty", pt = "Pobreza"),
@@ -311,7 +311,7 @@ translations <- list(
     participation = list(en = "Labor Force Participation", pt = "Participação na Força de Trabalho"),
     unemployment = list(en = "Unemployment", pt = "Desemprego"),
     underutilization = list(en = "Underutilization", pt = "Subutilização"),
-    employment_type = list(en = "Employment Type", pt = "Tipo de Ocupação"),
+    employment_type = list(en = "Position in Occupation", pt = "Posição na Ocupação"),
     economic_sector = list(en = "Economic Sector", pt = "Setor Econômico"),
     # Earnings (restructured: average + wage_mass with usual/effective subcategories)
     average = list(en = "Average Earnings", pt = "Rendimento Médio"),
@@ -342,7 +342,7 @@ translations <- list(
     family_workers = list(en = "Family Workers", pt = "Trabalhadores Familiares"),
     # Earnings subcategories
     all_jobs = list(en = "All Jobs", pt = "Todos os Trabalhos"),
-    by_employment_type = list(en = "By Employment Type", pt = "Por Tipo de Ocupação"),
+    by_employment_type = list(en = "By Position in Occupation", pt = "Por Posição na Ocupação"),
     by_economic_sector = list(en = "By Economic Sector", pt = "Por Setor Econômico"),
     # Wage mass period
     usual = list(en = "Usual", pt = "Habitual"),
@@ -409,8 +409,8 @@ translations <- list(
     data_freshness = list(en = "Data Freshness", pt = "Atualizacao dos Dados"),
     sidra_data = list(en = "SIDRA data:", pt = "Dados SIDRA:"),
     not_available_refresh = list(
-      en = "Not available - click 'Refresh' in Series Explorer",
-      pt = "Nao disponivel - clique em 'Atualizar' no Explorador de Series"
+      en = "Not available - click 'Refresh' in Monthly SIDRA Series",
+      pt = "Nao disponivel - clique em 'Atualizar' nas Series SIDRA Mensais"
     ),
     how_to_cite = list(en = "How to Cite", pt = "Como Citar"),
     cite_note = list(
@@ -648,16 +648,16 @@ translations <- list(
       pt = "Painel PNADCperiods"
     ),
     hero_subtitle = list(
-      en = "Sub-quarterly period identification and monthly estimates from Brazil's PNADC survey",
-      pt = "Identifica\u00e7\u00e3o de per\u00edodos sub-trimestrais e estimativas mensais a partir da PNADC"
+      en = "Monthly series and estimates from Brazil's PNAD Cont\u00ednua",
+      pt = "S\u00e9ries e estimativas mensais a partir da PNAD Cont\u00ednua"
     ),
     what_is = list(
       en = "What is Mensalization?",
       pt = "O que \u00e9 Mensaliza\u00e7\u00e3o?"
     ),
     what_is_text = list(
-      en = "The PNADCperiods R package (Barbosa & Hecksher, 2026) identifies sub-quarterly time periods in PNADC microdata --- determining the exact month, and experimentally the fortnight and week, of each interview. This enables two main functionalities: (1) direct analysis of microdata at monthly frequency with calibrated weights, and (2) mensalization of SIDRA rolling quarter series (e.g., recovering the monthly unemployment rate from the Jan-Feb-Mar average reported for March). Both approaches reveal short-term dynamics hidden by quarterly smoothing. The methodology was developed by Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 and n. 87; Carta de Conjuntura v. 47).",
-      pt = "O pacote R PNADCperiods (Barbosa & Hecksher, 2026) identifica per\u00edodos sub-trimestrais nos microdados da PNADC --- determinando o m\u00eas exato, e experimentalmente a quinzena e a semana, de cada entrevista. Isso possibilita duas funcionalidades principais: (1) an\u00e1lise direta dos microdados em frequ\u00eancia mensal com pesos calibrados, e (2) mensaliza\u00e7\u00e3o das s\u00e9ries de trimestres m\u00f3veis do SIDRA (ex: recuperar a taxa de desemprego mensal a partir da m\u00e9dia Jan-Fev-Mar reportada para Mar\u00e7o). Ambas as abordagens revelam din\u00e2micas de curto prazo ocultas pela suaviza\u00e7\u00e3o trimestral. A metodologia foi desenvolvida por Marcos Hecksher (Hecksher, 2020 --- IPEA Nota T\u00e9cnica Disoc n. 62 e n. 87; Carta de Conjuntura v. 47)."
+      en = "The PNADCperiods R package (Barbosa & Hecksher, 2026) recovers monthly estimates from PNADC's rolling-quarter aggregates, revealing short-term dynamics hidden by quarterly smoothing. It works in two ways: by calibrating microdata weights to monthly frequency, and by mensalizing SIDRA's published series directly (e.g., the monthly unemployment rate from the Jan-Feb-Mar average reported for March). The methodology is described in Hecksher & Barbosa (2026, SocArXiv preprint).",
+      pt = "O pacote R PNADCperiods (Barbosa & Hecksher, 2026) recupera estimativas mensais a partir dos trimestres m\u00f3veis da PNADC, revelando din\u00e2micas de curto prazo ocultas pela suaviza\u00e7\u00e3o trimestral. Funciona de duas formas: calibrando pesos dos microdados para frequ\u00eancia mensal, e mensalizando diretamente as s\u00e9ries do SIDRA (ex.: a taxa mensal de desemprego a partir da m\u00e9dia Jan-Fev-Mar reportada para Mar\u00e7o). A metodologia est\u00e1 descrita em Hecksher & Barbosa (2026, preprint SocArXiv)."
     ),
     feature_series_title = list(
       en = "SIDRA Series Mensalization",
@@ -1184,6 +1184,10 @@ format_series_value <- function(x, unit = "thousands", lang = "pt",
     if (include_unit) {
       prefix <- if (is_negative) "-R$ " else "R$ "
       formatted <- paste0(prefix, formatted)
+      if (unit == "currency_millions") {
+        suffix <- if (lang == "en") " M" else " mi"
+        formatted <- paste0(formatted, suffix)
+      }
     } else if (is_negative) {
       formatted <- paste0("-", formatted)
     }
