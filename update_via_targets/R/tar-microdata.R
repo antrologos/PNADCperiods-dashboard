@@ -218,7 +218,8 @@ build_demographic_groupings <- function(d) {
 
 build_inequality_outputs <- function(prepared_microdata_path,
                                      dest_dir,
-                                     measures_inequality_path) {
+                                     measures_inequality_path,
+                                     utils_deseasonalize_path = NULL) {
   # Source into globalenv (default): compute_breakdowns/shares/lorenz/decomp
   # live in globalenv (sourced by _targets.R) and lexically reference
   # weighted_gini/lorenz_points/income_shares/etc. via globalenv. Same
@@ -277,6 +278,17 @@ build_inequality_outputs <- function(prepared_microdata_path,
   ineq[, period := as.Date(sprintf("%d-%02d-15",
                                    ref_month_yyyymm %/% 100,
                                    ref_month_yyyymm %% 100))]
+  # Append X-13 / STL deseasonalized columns: value_x13, value_stl. Per
+  # (measure, breakdown_type, breakdown_value) group; groups too short for
+  # X-11 / STL fall back to the original values inside the helpers.
+  deseasonalize_long_table(
+    data = ineq,
+    time_col = "ref_month_yyyymm",
+    group_cols = c("measure", "breakdown_type", "breakdown_value"),
+    value_cols = "value",
+    methods = c("x13", "stl"),
+    utils_deseasonalize_path = utils_deseasonalize_path
+  )
   inequality_path <- file.path(dest_dir, "inequality_data.rds")
   saveRDS_atomic(ineq, inequality_path)
 
@@ -451,7 +463,8 @@ compute_gini_decomp <- function(d, income_vars, labels_dt) {
 build_poverty_outputs <- function(prepared_microdata_path,
                                   inpc_factor_table,
                                   dest_dir,
-                                  measures_poverty_path) {
+                                  measures_poverty_path,
+                                  utils_deseasonalize_path = NULL) {
   # Source into globalenv (default): protects against future refactors that
   # move the j-expression callers into globalenv helpers (same lesson as
   # Plan 5 fix for build_prepared_microdata).
@@ -596,6 +609,17 @@ build_poverty_outputs <- function(prepared_microdata_path,
     fgt1_smooth = data.table::frollmean(fgt1, 3, align = "center"),
     fgt2_smooth = data.table::frollmean(fgt2, 3, align = "center")
   ), by = .(poverty_line_id, breakdown_type, breakdown_value)]
+
+  # Append X-13 / STL deseasonalized columns for each FGT measure. Per
+  # (poverty_line_id, breakdown_type, breakdown_value) group.
+  deseasonalize_long_table(
+    data = poverty_data,
+    time_col = "ref_month_yyyymm",
+    group_cols = c("poverty_line_id", "breakdown_type", "breakdown_value"),
+    value_cols = c("fgt0", "fgt1", "fgt2"),
+    methods = c("x13", "stl"),
+    utils_deseasonalize_path = utils_deseasonalize_path
+  )
 
   dest <- file.path(dest_dir, "poverty_data.rds")
   saveRDS_atomic(poverty_data, dest)

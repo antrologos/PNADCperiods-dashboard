@@ -27,6 +27,10 @@ tar_pipeline_packages <- c(
   # Deflation
   "deflateBR",
 
+  # Seasonal adjustment (for inequality / poverty deseasonalized columns)
+  "seasonal",
+  "forecast",
+
   # SIDRA (used only in offline-rebuild mode)
   "sidrar",
 

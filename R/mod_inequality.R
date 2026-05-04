@@ -50,6 +50,9 @@ inequalityUI <- function(id) {
       # Date range slider (time series themes only)
       uiOutput(ns("date_range_ui")),
 
+      # Seasonal adjustment toggle (time series themes only)
+      uiOutput(ns("deseason_ui")),
+
       # Period picker (lorenz single / decomposition)
       uiOutput(ns("period_picker_ui")),
 
@@ -327,6 +330,35 @@ inequalityServer <- function(id, shared_data, lang) {
     }) %>% debounce(300)
 
     # ====================================================================
+    # Seasonal adjustment toggle (only for time-series themes; only when
+    # the precomputed value_x13 / value_stl columns are present in the
+    # loaded data.)
+    # ====================================================================
+
+    output$deseason_ui <- renderUI({
+      theme <- input$theme
+      if (is.null(theme) || !(theme %in% c("income_level", "inequality_indexes"))) {
+        return(NULL)
+      }
+      d <- ineq_data()
+      if (is.null(d) || !all(c("value_x13", "value_stl") %in% names(d))) {
+        return(NULL)
+      }
+      lang_val <- lang()
+      radioButtons(
+        ns("deseason"),
+        i18n("controls.deseasonalization", lang_val),
+        choices = c(
+          setNames("none", i18n("controls.none", lang_val)),
+          setNames("x13",  i18n("controls.x13_arima", lang_val)),
+          setNames("stl",  i18n("controls.stl", lang_val))
+        ),
+        selected = isolate(input$deseason) %||% "none",
+        inline = TRUE
+      )
+    })
+
+    # ====================================================================
     # Period picker (for lorenz single / decomposition)
     # ====================================================================
 
@@ -449,6 +481,19 @@ inequalityServer <- function(id, shared_data, lang) {
       dr <- date_slider_debounced()
       if (!is.null(dr)) {
         sub <- sub[period >= dr[1] & period <= dr[2]]
+      }
+
+      # Seasonal adjustment swap (only for time series themes; falls back
+      # to the original `value` if the precomputed columns are absent or
+      # the user picked "none")
+      m <- input$deseason %||% "none"
+      if (m %in% c("x13", "stl") &&
+          theme %in% c("income_level", "inequality_indexes")) {
+        src <- paste0("value_", m)
+        if (src %in% names(sub)) {
+          sub <- data.table::copy(sub)
+          sub[, value := get(src)]
+        }
       }
 
       sub

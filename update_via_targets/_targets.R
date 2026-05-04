@@ -141,6 +141,11 @@ list(
     file.path(tar_dashboard_root(), "R", "measures_poverty.R"),
     format = "file"
   ),
+  tar_target(
+    utils_deseasonalize_path,
+    file.path(tar_dashboard_root(), "R", "utils_deseasonalize.R"),
+    format = "file"
+  ),
 
   # --------------------------------------------------------------------------
   # T0 migration backup — runs once before any output is written.
@@ -471,7 +476,8 @@ list(
       build_inequality_outputs(
         prepared_microdata_path = prepared_microdata_fst,
         dest_dir = dashboard_data_dest,
-        measures_inequality_path = measures_inequality_path
+        measures_inequality_path = measures_inequality_path,
+        utils_deseasonalize_path = utils_deseasonalize_path
       )
     },
     format = "file"
@@ -485,7 +491,8 @@ list(
         prepared_microdata_path = prepared_microdata_fst,
         inpc_factor_table = inpc_factor_table,
         dest_dir = dashboard_data_dest,
-        measures_poverty_path = measures_poverty_path
+        measures_poverty_path = measures_poverty_path,
+        utils_deseasonalize_path = utils_deseasonalize_path
       )
     },
     format = "file"

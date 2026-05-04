@@ -53,6 +53,9 @@ povertyUI <- function(id) {
       # Date range slider
       uiOutput(ns("date_range_ui")),
 
+      # Seasonal adjustment toggle
+      uiOutput(ns("deseason_ui")),
+
       # Display options
       uiOutput(ns("display_options_ui")),
 
@@ -254,6 +257,28 @@ povertyServer <- function(id, shared_data, lang) {
                   step = 30)
     })
 
+    # Seasonal adjustment toggle (only when precomputed fgtN_x13 / fgtN_stl
+    # columns are present in the loaded poverty_data)
+    output$deseason_ui <- renderUI({
+      d <- shared_data$get_poverty_data()
+      if (is.null(d) ||
+          !all(c("fgt0_x13", "fgt0_stl") %in% names(d))) {
+        return(NULL)
+      }
+      lang_val <- lang()
+      radioButtons(
+        ns("deseason"),
+        i18n("controls.deseasonalization", lang_val),
+        choices = c(
+          setNames("none", i18n("controls.none", lang_val)),
+          setNames("x13",  i18n("controls.x13_arima", lang_val)),
+          setNames("stl",  i18n("controls.stl", lang_val))
+        ),
+        selected = isolate(input$deseason) %||% "none",
+        inline = TRUE
+      )
+    })
+
     # Debounced date slider (prevents 100+ re-renders during drag)
     date_slider_debounced <- reactive({
       input$date_slider
@@ -315,6 +340,21 @@ povertyServer <- function(id, shared_data, lang) {
       dr <- date_slider_debounced()
       if (!is.null(dr)) {
         sub <- sub[period >= dr[1] & period <= dr[2]]
+      }
+
+      # Seasonal adjustment swap: replace fgt0/fgt1/fgt2 with the
+      # precomputed deseasonalized columns when the user selects x13 or
+      # stl. Falls back to the original values when the columns are
+      # absent (older data .rds without the new columns).
+      m <- input$deseason %||% "none"
+      if (m %in% c("x13", "stl")) {
+        sub <- data.table::copy(sub)
+        for (col in c("fgt0", "fgt1", "fgt2")) {
+          src <- paste0(col, "_", m)
+          if (src %in% names(sub)) {
+            sub[, (col) := get(src)]
+          }
+        }
       }
 
       sub
