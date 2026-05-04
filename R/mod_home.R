@@ -196,17 +196,17 @@ homeUI <- function(id) {
           textOutput(ns("footer_package_citation"), inline = TRUE)
         )
       ),
-      # Original methodology reference
+      # Methodology paper reference
       tags$p(
         class = "mb-1",
         style = "font-size: 0.8rem;",
         tags$strong(textOutput(ns("footer_methodology_label"), inline = TRUE)),
         tags$br(),
         tags$a(
-          href = "https://portalantigo.ipea.gov.br/portal/index.php?option=com_content&view=article&id=35453",
+          href = "https://osf.io/preprints/socarxiv/fra5u_v1",
           target = "_blank",
           style = "font-style: italic;",
-          "HECKSHER, Marcos. \"Valor Impreciso por M\u00eas Exato: Microdados e Indicadores Mensais Baseados na Pnad Cont\u00ednua\". IPEA - Nota T\u00e9cnica Disoc, n. 62. Bras\u00edlia, DF: IPEA, Abril/2020."
+          "HECKSHER, Marcos; BARBOSA, Rogerio J. \"Estimation of exact months for the microdata and rolling quarter series from PNAD Cont\u00ednua\". SocArXiv preprint, 2026."
         )
       ),
       # Copyright

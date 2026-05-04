@@ -307,6 +307,7 @@ translations <- list(
   # ============================================================================
   theme_categories = list(
     # Labor market
+    participation_and_occupation = list(en = "Participation & Occupation", pt = "Participação e Ocupação"),
     participation = list(en = "Labor Force Participation", pt = "Participação na Força de Trabalho"),
     unemployment = list(en = "Unemployment", pt = "Desemprego"),
     underutilization = list(en = "Underutilization", pt = "Subutilização"),
@@ -372,8 +373,8 @@ translations <- list(
     ),
     what_is = list(en = "What is Mensalization?", pt = "O que e Mensalizacao?"),
     what_is_text = list(
-      en = "Mensalization is a statistical technique that converts Brazil's quarterly PNADC survey data into monthly estimates. The official IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar average reported for March), which smooth out short-term dynamics. This dashboard presents the monthly estimates recovered using the PNADCperiods R package (Barbosa & Hecksher, 2026), which implements the mensalization methodology developed by Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 and n. 87; Carta de Conjuntura v. 47).",
-      pt = "Mensalizacao e uma tecnica estatistica que converte os dados trimestrais da PNADC em estimativas mensais. As divulgacoes oficiais do IBGE reportam estimativas de 'trimestre movel' (ex: media Jan-Fev-Mar reportada para Marco), que suavizam dinamicas de curto prazo. Este painel apresenta as estimativas mensais recuperadas usando o pacote R PNADCperiods (Barbosa & Hecksher, 2026), que implementa a metodologia de mensalizacao desenvolvida por Marcos Hecksher (Hecksher, 2020 --- IPEA Nota Tecnica Disoc n. 62 e n. 87; Carta de Conjuntura v. 47)."
+      en = "Mensalization is a statistical technique that converts Brazil's quarterly PNADC survey data into monthly estimates. The official IBGE releases report 'rolling quarter' estimates (e.g., Jan-Feb-Mar average reported for March), which smooth out short-term dynamics. This dashboard presents the monthly estimates recovered using the PNADCperiods R package (Barbosa & Hecksher, 2026), which implements the mensalization methodology described in Hecksher & Barbosa (2026, SocArXiv preprint).",
+      pt = "Mensalizacao e uma tecnica estatistica que converte os dados trimestrais da PNADC em estimativas mensais. As divulgacoes oficiais do IBGE reportam estimativas de 'trimestre movel' (ex: media Jan-Fev-Mar reportada para Marco), que suavizam dinamicas de curto prazo. Este painel apresenta as estimativas mensais recuperadas usando o pacote R PNADCperiods (Barbosa & Hecksher, 2026), que implementa a metodologia de mensalizacao descrita em Hecksher & Barbosa (2026, preprint SocArXiv)."
     ),
     methodology = list(en = "Methodology", pt = "Metodologia"),
     methodology_text = list(
@@ -413,12 +414,16 @@ translations <- list(
     ),
     how_to_cite = list(en = "How to Cite", pt = "Como Citar"),
     cite_note = list(
-      en = "Please cite the R package (Barbosa & Hecksher, 2026) and the methodology papers: Hecksher (2020, IPEA Nota Tecnica Disoc n. 62 and n. 87; Carta de Conjuntura v. 47).",
-      pt = "Por favor, cite o pacote R (Barbosa & Hecksher, 2026) e os artigos metodologicos: Hecksher (2020, IPEA Nota Tecnica Disoc n. 62 e n. 87; Carta de Conjuntura v. 47)."
+      en = "Please cite the R package (Barbosa & Hecksher, 2026) and the preprint describing the methodology (Hecksher & Barbosa, 2026, SocArXiv).",
+      pt = "Por favor, cite o pacote R (Barbosa & Hecksher, 2026) e o preprint que descreve a metodologia (Hecksher & Barbosa, 2026, SocArXiv)."
     ),
     methodology_refs_header = list(
       en = "Methodology References",
       pt = "Referencias Metodologicas"
+    ),
+    methodology_refs_earlier_header = list(
+      en = "Earlier formulations of the methodology:",
+      pt = "Formulacoes anteriores da metodologia:"
     ),
     links = list(en = "Links", pt = "Links"),
     github = list(en = "GitHub Repository", pt = "Repositorio GitHub"),
@@ -491,6 +496,7 @@ translations <- list(
     # Themes
     theme = list(en = "Analysis", pt = "Análise"),
     theme_income_level = list(en = "Income Level", pt = "Nível de Renda"),
+    theme_inequality_indexes = list(en = "Inequality Indexes", pt = "Índices de Desigualdade"),
     theme_distribution = list(en = "Distribution", pt = "Distribuição"),
     theme_shares = list(en = "Income Shares", pt = "Parcelas de Renda"),
     theme_lorenz = list(en = "Lorenz Curve", pt = "Curva de Lorenz"),
@@ -706,8 +712,8 @@ translations <- list(
       pt = "[Pacote]"
     ),
     footer_methodology_label = list(
-      en = "[Original Methodology]",
-      pt = "[Metodologia Original]"
+      en = "[Methodology]",
+      pt = "[Metodologia]"
     ),
     footer_disclaimer = list(
       en = "Monthly estimates are not official IBGE statistics. For official data, visit sidra.ibge.gov.br.",

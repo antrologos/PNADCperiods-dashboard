@@ -76,10 +76,30 @@ aboutUI <- function(id) {
   year = {2026},
   note = {R package version 0.1.2. R. Barbosa (Ceres-IESP/UERJ): package, dashboard, and website. M. Hecksher (Ipea): mensalization methodology.},
   url = {https://CRAN.R-project.org/package=PNADCperiods}
+}
+
+@article{HecksherBarbosa2026,
+  title = {Estimation of exact months for the microdata and rolling quarter series from PNAD Cont\u00ednua},
+  author = {Hecksher, Marcos and Barbosa, Rogerio J.},
+  year = {2026},
+  journal = {SocArXiv preprint},
+  url = {https://osf.io/preprints/socarxiv/fra5u_v1}
 }"
         ),
         tags$h6(class = "mt-3 mb-2", style = "font-weight: 600;",
                 textOutput(ns("methodology_refs_header"), inline = TRUE)),
+        tags$ul(
+          style = "font-size: 0.8rem; padding-left: 1.2rem;",
+          tags$li(
+            'HECKSHER, Marcos; BARBOSA, Rogerio J. "Estimation of exact months for the microdata and rolling quarter series from PNAD Cont\u00ednua". SocArXiv preprint, 2026. ',
+            tags$a(href = "https://osf.io/preprints/socarxiv/fra5u_v1", target = "_blank", "[Link]")
+          )
+        ),
+        tags$p(
+          class = "mb-1 mt-2",
+          style = "font-size: 0.8rem; font-style: italic;",
+          textOutput(ns("methodology_refs_earlier_header"), inline = TRUE)
+        ),
         tags$ul(
           style = "font-size: 0.8rem; padding-left: 1.2rem;",
           tags$li(
@@ -252,6 +272,7 @@ aboutServer <- function(id, shared_data, lang = reactive("pt")) {
     output$cran_link_text <- renderText({ i18n("about.cran_link_text", get_lang()) })
     output$disclaimer_header <- renderText({ i18n("about.disclaimer", get_lang()) })
     output$methodology_refs_header <- renderText({ i18n("about.methodology_refs_header", get_lang()) })
+    output$methodology_refs_earlier_header <- renderText({ i18n("about.methodology_refs_earlier_header", get_lang()) })
     output$disclaimer_text <- renderText({ i18n("about.disclaimer_text", get_lang()) })
     output$disclaimer_official <- renderText({ i18n("about.disclaimer_official", get_lang()) })
 
