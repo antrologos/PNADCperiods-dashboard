@@ -98,6 +98,17 @@ inequalityUI <- function(id) {
         )
       ),
 
+      # Difference plot (conditional: only when show_difference is checked)
+      conditionalPanel(
+        condition = sprintf("input['%s'] == true", ns("show_difference")),
+        card(
+          card_header(textOutput(ns("difference_plot_title"), inline = TRUE)),
+          card_body(
+            plotlyOutput(ns("difference_plot"), height = "200px")
+          )
+        )
+      ),
+
       # Secondary plot (conditional: stacked shares, decomposition bar)
       uiOutput(ns("secondary_plot_ui")),
 
@@ -433,7 +444,24 @@ inequalityServer <- function(id, shared_data, lang) {
 
     output$display_options_ui <- renderUI({
       lang_val <- lang()
+      theme <- input$theme
+      is_time_series <- !is.null(theme) &&
+        theme %in% c("income_level", "inequality_indexes")
       tagList(
+        if (is_time_series) {
+          tagList(
+            checkboxInput(
+              ns("show_quarterly"),
+              i18n("controls.show_quarterly", lang_val),
+              value = FALSE
+            ),
+            checkboxInput(
+              ns("show_difference"),
+              i18n("controls.show_difference", lang_val),
+              value = FALSE
+            )
+          )
+        },
         checkboxInput(ns("show_table"), i18n("inequality.show_table", lang_val),
                       value = FALSE)
       )
@@ -831,6 +859,37 @@ inequalityServer <- function(id, shared_data, lang) {
         }
       }
 
+      # Optional 3-month rolling-mean overlay (mirror SIDRA "show quarterly").
+      # Computed on-the-fly because Inequality has no separate rolling-quarter
+      # data source — uses frollmean(value, 3, align = "right") per group.
+      if (isTRUE(input$show_quarterly)) {
+        if (breakdown == "overall") {
+          setorder(sub, period)
+          rolling <- data.table::frollmean(sub$value, 3, align = "right")
+          p <- p %>% add_trace(
+            x = sub$period, y = rolling,
+            type = "scatter", mode = "lines",
+            line = list(color = "#9E9E9E", width = 2, dash = "dash"),
+            name = i18n("plots.quarterly", lang_val)
+          )
+        } else {
+          for (i in seq_along(groups)) {
+            gdata <- sub[breakdown_value == groups[i]]
+            setorder(gdata, period)
+            gcol <- colors[i]
+            rolling <- data.table::frollmean(gdata$value, 3, align = "right")
+            p <- p %>% add_trace(
+              x = gdata$period, y = rolling,
+              type = "scatter", mode = "lines",
+              line = list(color = gcol, width = 1.5, dash = "dash"),
+              showlegend = FALSE,
+              name = paste0(groups[i], " - ",
+                             i18n("plots.quarterly", lang_val))
+            )
+          }
+        }
+      }
+
       # Format y-axis based on measure
       yformat <- if (!is.null(measure) && measure %in%
                      c("top1_share", "top5_share", "top10_share", "bottom50_share")) {
@@ -858,6 +917,75 @@ inequalityServer <- function(id, shared_data, lang) {
       )
 
       p
+    })
+
+    # ====================================================================
+    # Difference plot — value minus 3-month rolling-right-mean per group
+    # Mirrors the SIDRA Series Explorer "Mostrar diferença" pattern
+    # ====================================================================
+
+    output$difference_plot_title <- renderText({
+      i18n("plots.difference_title", lang())
+    })
+
+    output$difference_plot <- renderPlotly({
+      req(isTRUE(input$show_difference))
+      lang_val <- lang()
+      sub <- filtered_data()
+      validate(need(!is.null(sub) && nrow(sub) > 0, ""))
+      breakdown <- input$breakdown
+      validate(need(!is.null(breakdown), ""))
+
+      if (breakdown == "overall") {
+        setorder(sub, period)
+        diff_vals <- sub$value -
+          data.table::frollmean(sub$value, 3, align = "right")
+        plot_ly(
+          x = sub$period, y = diff_vals,
+          type = "scatter", mode = "lines",
+          line = list(color = "#1976D2", width = 1.5),
+          fill = "tozeroy",
+          fillcolor = "rgba(25, 118, 210, 0.15)",
+          name = i18n("plots.monthly_minus_quarterly", lang_val)
+        ) %>% layout(
+          xaxis = list(title = ""),
+          yaxis = list(title = ""),
+          separators = get_plotly_separators(lang_val),
+          hovermode = "x unified",
+          showlegend = FALSE
+        )
+      } else {
+        groups <- unique(sub$breakdown_value)
+        colors <- grDevices::colorRampPalette(
+          c("#1976D2", "#E53935", "#00ACC1", "#FF7043", "#4CAF50",
+            "#9C27B0", "#FFC107", "#795548")
+        )(length(groups))
+        p <- plot_ly()
+        for (i in seq_along(groups)) {
+          gdata <- sub[breakdown_value == groups[i]]
+          setorder(gdata, period)
+          diff_vals <- gdata$value -
+            data.table::frollmean(gdata$value, 3, align = "right")
+          p <- p %>% add_trace(
+            x = gdata$period, y = diff_vals,
+            type = "scatter", mode = "lines",
+            line = list(color = colors[i], width = 1.5),
+            name = groups[i]
+          )
+        }
+        legend_cfg <- if (length(groups) > 6) {
+          list(orientation = "v", x = 1.02, y = 1, font = list(size = 10))
+        } else {
+          list(orientation = "h", y = -0.15)
+        }
+        p %>% layout(
+          xaxis = list(title = ""),
+          yaxis = list(title = ""),
+          separators = get_plotly_separators(lang_val),
+          hovermode = "x unified",
+          legend = legend_cfg
+        )
+      }
     })
 
     # ====================================================================

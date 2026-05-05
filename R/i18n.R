@@ -512,8 +512,10 @@ translations <- list(
     top5_share = list(en = "Top 5% Share", pt = "Parcela do Top 5%"),
     top10_share = list(en = "Top 10% Share", pt = "Parcela do Top 10%"),
     bottom50_share = list(en = "Bottom 50% Share", pt = "Parcela dos 50% Inferiores"),
-    mean_income = list(en = "Mean Income", pt = "Renda Média"),
-    median_income = list(en = "Median Income", pt = "Renda Mediana"),
+    mean_income = list(en = "Household Per Capita - Mean",
+                        pt = "Renda Domiciliar Per Capita - Média"),
+    median_income = list(en = "Household Per Capita - Median",
+                          pt = "Renda Domiciliar Per Capita - Mediana"),
     # Shares
     quintile_shares = list(en = "Quintile Shares", pt = "Parcelas por Quintil"),
     decile_shares = list(en = "Decile Shares", pt = "Parcelas por Decil"),
