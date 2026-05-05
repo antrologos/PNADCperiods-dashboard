@@ -272,10 +272,11 @@ povertyServer <- function(id, shared_data, lang) {
         choices = c(
           setNames("none", i18n("controls.none", lang_val)),
           setNames("x13",  i18n("controls.x13_arima", lang_val)),
-          setNames("stl",  i18n("controls.stl", lang_val))
+          setNames("stl",  i18n("controls.stl", lang_val)),
+          setNames("both", i18n("controls.compare_both", lang_val))
         ),
         selected = isolate(input$deseason) %||% "none",
-        inline = TRUE
+        inline = FALSE
       )
     })
 
@@ -340,21 +341,6 @@ povertyServer <- function(id, shared_data, lang) {
       dr <- date_slider_debounced()
       if (!is.null(dr)) {
         sub <- sub[period >= dr[1] & period <= dr[2]]
-      }
-
-      # Seasonal adjustment swap: replace fgt0/fgt1/fgt2 with the
-      # precomputed deseasonalized columns when the user selects x13 or
-      # stl. Falls back to the original values when the columns are
-      # absent (older data .rds without the new columns).
-      m <- input$deseason %||% "none"
-      if (m %in% c("x13", "stl")) {
-        sub <- data.table::copy(sub)
-        for (col in c("fgt0", "fgt1", "fgt2")) {
-          src <- paste0(col, "_", m)
-          if (src %in% names(sub)) {
-            sub[, (col) := get(src)]
-          }
-        }
       }
 
       sub
@@ -425,23 +411,69 @@ povertyServer <- function(id, shared_data, lang) {
 
       # ---- ALL THREE FGT ----
       if (measure == "all_fgt") {
-        return(render_all_fgt_plot(sub, breakdown, smoothing, lang_val))
+        return(render_all_fgt_plot(sub, breakdown, smoothing,
+                                    input$deseason %||% "none", lang_val))
       }
 
       # ---- SINGLE FGT ----
       y_col <- y_var_name()
 
+      # Seasonal adjustment (none / x13 / stl / both). Mirrors the SIDRA
+      # Series Explorer pattern: original faded, adjusted solid.
+      deseason <- input$deseason %||% "none"
+      x13_col <- paste0(measure, "_x13")
+      stl_col <- paste0(measure, "_stl")
+      has_x13 <- x13_col %in% names(sub)
+      has_stl <- stl_col %in% names(sub)
+      if (!has_x13 && !has_stl) deseason <- "none"
+      # When deseason is active, the comparison overlay always uses the
+      # raw FGT (not the smoothed variant) so it matches what was fed to
+      # X-13/STL upstream.
+      raw_col <- if (deseason != "none") measure else y_col
+
       if (breakdown == "overall") {
         setorder(sub, period)
-        p <- plot_ly(data = sub, x = ~period, y = as.formula(paste0("~", y_col)),
-                     type = "scatter", mode = "lines+markers",
-                     line = list(color = "#1976D2", width = 2),
-                     marker = list(size = 3, color = "#1976D2"),
-                     name = i18n("demographics.nacional", lang_val),
-                     hovertemplate = paste0(
-                       "%{x|%b %Y}<br>",
-                       "%{y:.1%}<extra></extra>"
-                     ))
+        nacional <- i18n("demographics.nacional", lang_val)
+        p <- plot_ly()
+        if (deseason == "none") {
+          p <- p %>% add_trace(
+            data = sub, x = ~period, y = as.formula(paste0("~", y_col)),
+            type = "scatter", mode = "lines+markers",
+            line = list(color = "#1976D2", width = 2),
+            marker = list(size = 3, color = "#1976D2"),
+            name = nacional,
+            hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+          )
+        } else {
+          # Original (faded background)
+          p <- p %>% add_trace(
+            data = sub, x = ~period, y = as.formula(paste0("~", raw_col)),
+            type = "scatter", mode = "lines",
+            line = list(color = "#9E9E9E", width = 1.5, dash = "dot"),
+            opacity = 0.7,
+            name = paste0(nacional, " - ", i18n("plots.original", lang_val)),
+            hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+          )
+          if (deseason %in% c("x13", "both") && has_x13) {
+            p <- p %>% add_trace(
+              data = sub, x = ~period, y = as.formula(paste0("~", x13_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = "#1976D2", width = 2),
+              name = paste0(nacional, " - X-13"),
+              hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+            )
+          }
+          if (deseason %in% c("stl", "both") && has_stl) {
+            stl_color <- if (deseason == "both") "#00ACC1" else "#1976D2"
+            p <- p %>% add_trace(
+              data = sub, x = ~period, y = as.formula(paste0("~", stl_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = stl_color, width = 2),
+              name = paste0(nacional, " - STL"),
+              hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+            )
+          }
+        }
       } else {
         groups <- unique(sub$breakdown_value)
         colors <- grDevices::colorRampPalette(
@@ -453,17 +485,54 @@ povertyServer <- function(id, shared_data, lang) {
         for (i in seq_along(groups)) {
           gdata <- sub[breakdown_value == groups[i]]
           setorder(gdata, period)
-          p <- p %>% add_trace(
-            data = gdata, x = ~period, y = as.formula(paste0("~", y_col)),
-            type = "scatter", mode = "lines",
-            line = list(color = colors[i], width = 2),
-            name = groups[i],
-            hovertemplate = paste0(
-              groups[i], "<br>",
-              "%{x|%b %Y}<br>",
-              "%{y:.1%}<extra></extra>"
+          gcol <- colors[i]
+          if (deseason == "none") {
+            p <- p %>% add_trace(
+              data = gdata, x = ~period, y = as.formula(paste0("~", y_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = gcol, width = 2),
+              name = groups[i],
+              hovertemplate = paste0(groups[i], "<br>",
+                                       "%{x|%b %Y}<br>%{y:.1%}<extra></extra>")
             )
-          )
+          } else {
+            # Original faded (same color as group, dotted)
+            p <- p %>% add_trace(
+              data = gdata, x = ~period,
+              y = as.formula(paste0("~", raw_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = gcol, width = 1.2, dash = "dot"),
+              opacity = 0.45, showlegend = FALSE,
+              name = paste0(groups[i], " - ",
+                             i18n("plots.original", lang_val)),
+              hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+            )
+            if (deseason %in% c("x13", "both") && has_x13) {
+              p <- p %>% add_trace(
+                data = gdata, x = ~period,
+                y = as.formula(paste0("~", x13_col)),
+                type = "scatter", mode = "lines",
+                line = list(color = gcol, width = 2),
+                name = if (deseason == "both")
+                  paste0(groups[i], " - X-13") else groups[i],
+                hovertemplate = paste0(groups[i], "<br>",
+                                         "%{x|%b %Y}<br>%{y:.1%}<extra></extra>")
+              )
+            }
+            if (deseason %in% c("stl", "both") && has_stl) {
+              p <- p %>% add_trace(
+                data = gdata, x = ~period,
+                y = as.formula(paste0("~", stl_col)),
+                type = "scatter", mode = "lines",
+                line = list(color = gcol, width = 2,
+                             dash = if (deseason == "both") "dash" else "solid"),
+                name = if (deseason == "both")
+                  paste0(groups[i], " - STL") else groups[i],
+                hovertemplate = paste0(groups[i], "<br>",
+                                         "%{x|%b %Y}<br>%{y:.1%}<extra></extra>")
+              )
+            }
+          }
         }
       }
 
@@ -490,46 +559,83 @@ povertyServer <- function(id, shared_data, lang) {
     # Helper: Render all-three-FGT subplot
     # ====================================================================
 
-    render_all_fgt_plot <- function(sub, breakdown, smoothing, lang_val) {
+    render_all_fgt_plot <- function(sub, breakdown, smoothing, deseason,
+                                     lang_val) {
       if (is.null(smoothing)) smoothing <- "raw"
+      if (is.null(deseason))  deseason  <- "none"
 
       suffix <- if (smoothing == "smooth") "_smooth" else ""
-      fgt_cols <- paste0(c("fgt0", "fgt1", "fgt2"), suffix)
+      fgt_base <- c("fgt0", "fgt1", "fgt2")
+      # When deseason is active, the comparison overlay always uses the
+      # raw FGT (matching what was fed to X-13/STL upstream).
+      raw_cols <- if (deseason != "none") fgt_base else paste0(fgt_base, suffix)
+      x13_cols <- paste0(fgt_base, "_x13")
+      stl_cols <- paste0(fgt_base, "_stl")
+      fgt_colors <- c("#1976D2", "#E53935", "#FF7043")
       fgt_labels <- c(
         i18n("poverty.headcount", lang_val),
         i18n("poverty.poverty_gap", lang_val),
         i18n("poverty.severity", lang_val)
       )
+      has_x13 <- all(x13_cols %in% names(sub))
+      has_stl <- all(stl_cols %in% names(sub))
+      if (!has_x13 && !has_stl) deseason <- "none"
+
+      build_panel <- function(raw_col, x13_col, stl_col, color, label) {
+        p <- plot_ly()
+        if (deseason == "none") {
+          p <- p %>% add_trace(
+            data = sub, x = ~period, y = as.formula(paste0("~", raw_col)),
+            type = "scatter", mode = "lines+markers",
+            line = list(color = color, width = 2),
+            marker = list(size = 2, color = color),
+            name = label,
+            hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+          )
+        } else {
+          p <- p %>% add_trace(
+            data = sub, x = ~period, y = as.formula(paste0("~", raw_col)),
+            type = "scatter", mode = "lines",
+            line = list(color = "#9E9E9E", width = 1.5, dash = "dot"),
+            opacity = 0.7, showlegend = FALSE,
+            name = paste0(label, " - ", i18n("plots.original", lang_val)),
+            hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+          )
+          if (deseason %in% c("x13", "both") && has_x13) {
+            p <- p %>% add_trace(
+              data = sub, x = ~period, y = as.formula(paste0("~", x13_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = color, width = 2),
+              name = if (deseason == "both") paste0(label, " - X-13") else label,
+              hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+            )
+          }
+          if (deseason %in% c("stl", "both") && has_stl) {
+            stl_color <- if (deseason == "both") "#00ACC1" else color
+            p <- p %>% add_trace(
+              data = sub, x = ~period, y = as.formula(paste0("~", stl_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = stl_color, width = 2,
+                           dash = if (deseason == "both") "dash" else "solid"),
+              name = if (deseason == "both") paste0(label, " - STL") else label,
+              hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>"
+            )
+          }
+        }
+        p %>% layout(yaxis = list(title = "", tickformat = ".1%"))
+      }
 
       # Use overall for 3-panel
       if (breakdown == "overall") {
         setorder(sub, period)
 
         p <- plotly::subplot(
-          plot_ly(data = sub, x = ~period, y = as.formula(paste0("~", fgt_cols[1])),
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#1976D2", width = 2),
-                  marker = list(size = 2, color = "#1976D2"),
-                  name = fgt_labels[1],
-                  hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>") %>%
-            layout(yaxis = list(title = "", tickformat = ".1%")),
-
-          plot_ly(data = sub, x = ~period, y = as.formula(paste0("~", fgt_cols[2])),
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#E53935", width = 2),
-                  marker = list(size = 2, color = "#E53935"),
-                  name = fgt_labels[2],
-                  hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>") %>%
-            layout(yaxis = list(title = "", tickformat = ".1%")),
-
-          plot_ly(data = sub, x = ~period, y = as.formula(paste0("~", fgt_cols[3])),
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#FF7043", width = 2),
-                  marker = list(size = 2, color = "#FF7043"),
-                  name = fgt_labels[3],
-                  hovertemplate = "%{x|%b %Y}<br>%{y:.1%}<extra></extra>") %>%
-            layout(yaxis = list(title = "", tickformat = ".1%")),
-
+          build_panel(raw_cols[1], x13_cols[1], stl_cols[1],
+                       fgt_colors[1], fgt_labels[1]),
+          build_panel(raw_cols[2], x13_cols[2], stl_cols[2],
+                       fgt_colors[2], fgt_labels[2]),
+          build_panel(raw_cols[3], x13_cols[3], stl_cols[3],
+                       fgt_colors[3], fgt_labels[3]),
           nrows = 3, shareX = TRUE, titleY = FALSE
         ) %>% layout(
           annotations = list(
@@ -549,8 +655,11 @@ povertyServer <- function(id, shared_data, lang) {
           margin = list(l = 80)
         )
       } else {
-        # With breakdown: just plot fgt0 by group (simplification for multi-group)
-        y_col <- paste0("fgt0", suffix)
+        # With breakdown: plot only fgt0 by group (simplification: 3 FGTs ×
+        # N groups would be unreadable). Same overlay pattern as above.
+        raw_col <- raw_cols[1]
+        x13_col <- x13_cols[1]
+        stl_col <- stl_cols[1]
         groups <- unique(sub$breakdown_value)
         colors <- grDevices::colorRampPalette(
           c("#1976D2", "#E53935", "#00ACC1", "#FF7043", "#4CAF50",
@@ -561,12 +670,47 @@ povertyServer <- function(id, shared_data, lang) {
         for (i in seq_along(groups)) {
           gdata <- sub[breakdown_value == groups[i]]
           setorder(gdata, period)
-          p <- p %>% add_trace(
-            data = gdata, x = ~period, y = as.formula(paste0("~", y_col)),
-            type = "scatter", mode = "lines",
-            line = list(color = colors[i], width = 2),
-            name = groups[i]
-          )
+          gcol <- colors[i]
+          if (deseason == "none") {
+            p <- p %>% add_trace(
+              data = gdata, x = ~period,
+              y = as.formula(paste0("~", raw_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = gcol, width = 2),
+              name = groups[i]
+            )
+          } else {
+            p <- p %>% add_trace(
+              data = gdata, x = ~period,
+              y = as.formula(paste0("~", raw_col)),
+              type = "scatter", mode = "lines",
+              line = list(color = gcol, width = 1.2, dash = "dot"),
+              opacity = 0.45, showlegend = FALSE,
+              name = paste0(groups[i], " - ",
+                             i18n("plots.original", lang_val))
+            )
+            if (deseason %in% c("x13", "both") && has_x13) {
+              p <- p %>% add_trace(
+                data = gdata, x = ~period,
+                y = as.formula(paste0("~", x13_col)),
+                type = "scatter", mode = "lines",
+                line = list(color = gcol, width = 2),
+                name = if (deseason == "both")
+                  paste0(groups[i], " - X-13") else groups[i]
+              )
+            }
+            if (deseason %in% c("stl", "both") && has_stl) {
+              p <- p %>% add_trace(
+                data = gdata, x = ~period,
+                y = as.formula(paste0("~", stl_col)),
+                type = "scatter", mode = "lines",
+                line = list(color = gcol, width = 2,
+                             dash = if (deseason == "both") "dash" else "solid"),
+                name = if (deseason == "both")
+                  paste0(groups[i], " - STL") else groups[i]
+              )
+            }
+          }
         }
 
         legend_cfg <- if (length(groups) > 6) {

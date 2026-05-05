@@ -351,10 +351,11 @@ inequalityServer <- function(id, shared_data, lang) {
         choices = c(
           setNames("none", i18n("controls.none", lang_val)),
           setNames("x13",  i18n("controls.x13_arima", lang_val)),
-          setNames("stl",  i18n("controls.stl", lang_val))
+          setNames("stl",  i18n("controls.stl", lang_val)),
+          setNames("both", i18n("controls.compare_both", lang_val))
         ),
         selected = isolate(input$deseason) %||% "none",
-        inline = TRUE
+        inline = FALSE
       )
     })
 
@@ -481,19 +482,6 @@ inequalityServer <- function(id, shared_data, lang) {
       dr <- date_slider_debounced()
       if (!is.null(dr)) {
         sub <- sub[period >= dr[1] & period <= dr[2]]
-      }
-
-      # Seasonal adjustment swap (only for time series themes; falls back
-      # to the original `value` if the precomputed columns are absent or
-      # the user picked "none")
-      m <- input$deseason %||% "none"
-      if (m %in% c("x13", "stl") &&
-          theme %in% c("income_level", "inequality_indexes")) {
-        src <- paste0("value_", m)
-        if (src %in% names(sub)) {
-          sub <- data.table::copy(sub)
-          sub[, value := get(src)]
-        }
       }
 
       sub
@@ -734,21 +722,63 @@ inequalityServer <- function(id, shared_data, lang) {
         return(p)
       }
 
-      # ---- TIME SERIES (income_level, distribution) ----
+      # ---- TIME SERIES (income_level, inequality_indexes) ----
       sub <- filtered_data()
       if (is.null(sub) || nrow(sub) == 0) return(plot_ly())
       if (is.null(breakdown)) return(plot_ly())
 
+      # Seasonal adjustment method (none / x13 / stl / both). Mirrors the
+      # SIDRA Series Explorer pattern: the original series is shown as a
+      # faded dotted overlay when an adjustment is selected.
+      deseason <- input$deseason %||% "none"
+      has_x13  <- "value_x13" %in% names(sub)
+      has_stl  <- "value_stl" %in% names(sub)
+      if (!has_x13 && !has_stl) deseason <- "none"
+
       if (breakdown == "overall") {
-        # Single line
         setorder(sub, period)
-        p <- plot_ly(data = sub, x = ~period, y = ~value,
-                     type = "scatter", mode = "lines+markers",
-                     line = list(color = "#1976D2", width = 2),
-                     marker = list(size = 3, color = "#1976D2"),
-                     name = i18n("demographics.nacional", lang_val))
+        nacional <- i18n("demographics.nacional", lang_val)
+        p <- plot_ly()
+
+        if (deseason == "none") {
+          p <- p %>% add_trace(
+            data = sub, x = ~period, y = ~value,
+            type = "scatter", mode = "lines+markers",
+            line = list(color = "#1976D2", width = 2),
+            marker = list(size = 3, color = "#1976D2"),
+            name = nacional
+          )
+        } else {
+          # Original (faded background)
+          orig_color <- if (deseason == "both") "#9E9E9E" else "#9E9E9E"
+          p <- p %>% add_trace(
+            data = sub, x = ~period, y = ~value,
+            type = "scatter", mode = "lines",
+            line = list(color = orig_color, width = 1.5, dash = "dot"),
+            opacity = 0.7,
+            name = paste0(nacional, " - ",
+                           i18n("plots.original", lang_val))
+          )
+          if (deseason %in% c("x13", "both") && has_x13) {
+            p <- p %>% add_trace(
+              data = sub, x = ~period, y = ~value_x13,
+              type = "scatter", mode = "lines",
+              line = list(color = "#1976D2", width = 2),
+              name = paste0(nacional, " - X-13")
+            )
+          }
+          if (deseason %in% c("stl", "both") && has_stl) {
+            stl_color <- if (deseason == "both") "#00ACC1" else "#1976D2"
+            p <- p %>% add_trace(
+              data = sub, x = ~period, y = ~value_stl,
+              type = "scatter", mode = "lines",
+              line = list(color = stl_color, width = 2),
+              name = paste0(nacional, " - STL")
+            )
+          }
+        }
       } else {
-        # Multiple lines by group
+        # Multiple groups: per-group color, with raw faded + adjusted solid
         groups <- unique(sub$breakdown_value)
         colors <- grDevices::colorRampPalette(
           c("#1976D2", "#E53935", "#00ACC1", "#FF7043", "#4CAF50",
@@ -759,12 +789,45 @@ inequalityServer <- function(id, shared_data, lang) {
         for (i in seq_along(groups)) {
           gdata <- sub[breakdown_value == groups[i]]
           setorder(gdata, period)
-          p <- p %>% add_trace(
-            data = gdata, x = ~period, y = ~value,
-            type = "scatter", mode = "lines",
-            line = list(color = colors[i], width = 2),
-            name = groups[i]
-          )
+          gcol <- colors[i]
+          if (deseason == "none") {
+            p <- p %>% add_trace(
+              data = gdata, x = ~period, y = ~value,
+              type = "scatter", mode = "lines",
+              line = list(color = gcol, width = 2),
+              name = groups[i]
+            )
+          } else {
+            # Original faded
+            p <- p %>% add_trace(
+              data = gdata, x = ~period, y = ~value,
+              type = "scatter", mode = "lines",
+              line = list(color = gcol, width = 1.2, dash = "dot"),
+              opacity = 0.45,
+              showlegend = FALSE,
+              name = paste0(groups[i], " - ",
+                             i18n("plots.original", lang_val))
+            )
+            if (deseason %in% c("x13", "both") && has_x13) {
+              p <- p %>% add_trace(
+                data = gdata, x = ~period, y = ~value_x13,
+                type = "scatter", mode = "lines",
+                line = list(color = gcol, width = 2),
+                name = if (deseason == "both")
+                  paste0(groups[i], " - X-13") else groups[i]
+              )
+            }
+            if (deseason %in% c("stl", "both") && has_stl) {
+              p <- p %>% add_trace(
+                data = gdata, x = ~period, y = ~value_stl,
+                type = "scatter", mode = "lines",
+                line = list(color = gcol, width = 2,
+                             dash = if (deseason == "both") "dash" else "solid"),
+                name = if (deseason == "both")
+                  paste0(groups[i], " - STL") else groups[i]
+              )
+            }
+          }
         }
       }
 
