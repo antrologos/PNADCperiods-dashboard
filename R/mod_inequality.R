@@ -175,6 +175,24 @@ inequalityServer <- function(id, shared_data, lang) {
       }
     })
 
+    # Phase 2-6: indiv income variants now have their own shares and
+    # lorenz assets (computed in build_quarterly_income_outputs from the
+    # mensalized quarterly stack). The reactives below row-bind those
+    # with the annual hh assets so the rest of the module filters by
+    # income_var transparently.
+    quarterly_shares_data <- reactive({
+      if (is.function(shared_data$get_quarterly_income_shares_data)) {
+        tryCatch(shared_data$get_quarterly_income_shares_data(),
+                 error = function(e) NULL)
+      } else NULL
+    })
+    quarterly_lorenz_data_all <- reactive({
+      if (is.function(shared_data$get_quarterly_lorenz_data)) {
+        tryCatch(shared_data$get_quarterly_lorenz_data(),
+                 error = function(e) NULL)
+      } else NULL
+    })
+
     # Routing reactive: returns the long-format data.table for the
     # currently selected income_var. hh_* -> annual (inequality_data),
     # indiv_* -> quarterly_income_data.
@@ -188,10 +206,20 @@ inequalityServer <- function(id, shared_data, lang) {
     })
 
     shares_data <- reactive({
+      iv <- input$income_var %||% DEFAULT_INCOME_VAR
+      if (iv %in% INDIV_INCOME_VARS) {
+        d <- quarterly_shares_data()
+        if (!is.null(d) && nrow(d) > 0) return(d)
+      }
       shared_data$get_income_shares_data()
     })
 
     lorenz_data_all <- reactive({
+      iv <- input$income_var %||% DEFAULT_INCOME_VAR
+      if (iv %in% INDIV_INCOME_VARS) {
+        d <- quarterly_lorenz_data_all()
+        if (!is.null(d) && nrow(d) > 0) return(d)
+      }
       shared_data$get_lorenz_data()
     })
 
@@ -259,23 +287,15 @@ inequalityServer <- function(id, shared_data, lang) {
     theme_choices <- reactive({
       lang_val <- lang()
       iv <- input$income_var %||% DEFAULT_INCOME_VAR
-      # 4 hh income variants have full coverage (income_level, indices,
-      # lorenz, decomposition). 4 indiv variants currently only have
-      # mean/median in the pipeline, so we expose just income_level.
-      # Phase 2-6 will extend the indiv pipeline; until then the other
-      # themes are hidden to avoid empty plots.
-      if (iv %in% INDIV_INCOME_VARS) {
-        return(c(
-          setNames("income_level",
-                   i18n("inequality.theme_income_level", lang_val))
-        ))
-      }
+      # Phase 2-6: indiv income vars now have full inequality data
+      # (gini/palma/etc., parcelas, Lorenz). Decomposition stays
+      # restricted to the 4 hh income variants (only domiciliar
+      # decomposition is well-defined).
       base <- c(
         setNames("income_level", i18n("inequality.theme_income_level", lang_val)),
         setNames("inequality_indexes", i18n("inequality.theme_inequality_indexes", lang_val)),
         setNames("lorenz", i18n("inequality.theme_lorenz", lang_val))
       )
-      # Decomposição só está disponível para as 4 vars domiciliares
       if (iv %in% HH_INCOME_VARS) {
         base <- c(
           base,
@@ -301,36 +321,27 @@ inequalityServer <- function(id, shared_data, lang) {
       theme <- input$theme
       if (is.null(theme)) theme <- "inequality_indexes"
 
-      iv <- input$income_var %||% DEFAULT_INCOME_VAR
-
       switch(theme,
-        # Phase 2-3 + 2-4: income_level lists statistical measures
+        # Phase 2-3 + 2-4 + 2-6: income_level lists statistical measures
         # (mean, min, P10, P25, median, P75, P90, max — ordered by
         # ascending percentile so the dropdown reads naturally), plus
         # the income shares (quintile/decile) folded from the old
-        # "shares" theme. Indiv income variants currently expose only
-        # mean and median (Phase 2-6 will extend the pipeline).
-        income_level = if (iv %in% INDIV_INCOME_VARS) {
-          c(
-            setNames("mean",   i18n("inequality.mean",   lang_val)),
-            setNames("median", i18n("inequality.median", lang_val))
-          )
-        } else {
-          c(
-            setNames("mean",     i18n("inequality.mean",     lang_val)),
-            setNames("min",      i18n("inequality.min",      lang_val)),
-            setNames("p10",      i18n("inequality.p10",      lang_val)),
-            setNames("p25",      i18n("inequality.p25",      lang_val)),
-            setNames("median",   i18n("inequality.median",   lang_val)),
-            setNames("p75",      i18n("inequality.p75",      lang_val)),
-            setNames("p90",      i18n("inequality.p90",      lang_val)),
-            setNames("max",      i18n("inequality.max",      lang_val)),
-            setNames("quintile",
-                     i18n("inequality.quintile_shares", lang_val)),
-            setNames("decile",
-                     i18n("inequality.decile_shares", lang_val))
-          )
-        },
+        # "shares" theme. Same set for hh and indiv income variants
+        # after Phase 2-6.
+        income_level = c(
+          setNames("mean",     i18n("inequality.mean",     lang_val)),
+          setNames("min",      i18n("inequality.min",      lang_val)),
+          setNames("p10",      i18n("inequality.p10",      lang_val)),
+          setNames("p25",      i18n("inequality.p25",      lang_val)),
+          setNames("median",   i18n("inequality.median",   lang_val)),
+          setNames("p75",      i18n("inequality.p75",      lang_val)),
+          setNames("p90",      i18n("inequality.p90",      lang_val)),
+          setNames("max",      i18n("inequality.max",      lang_val)),
+          setNames("quintile",
+                   i18n("inequality.quintile_shares", lang_val)),
+          setNames("decile",
+                   i18n("inequality.decile_shares", lang_val))
+        ),
         inequality_indexes = c(
           setNames("gini", i18n("inequality.gini", lang_val)),
           setNames("palma", i18n("inequality.palma", lang_val)),

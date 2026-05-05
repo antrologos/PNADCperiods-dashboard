@@ -581,10 +581,15 @@ list(
                                           inequality_assets, value = TRUE),
         income_decomposition_data = grep("income_decomposition_data\\.rds$",
                                           inequality_assets, value = TRUE),
-        poverty_data              = poverty_asset,
-        state_monthly_data        = state_monthly_asset,
-        brazil_states_sf          = brazil_states_sf_asset,
-        quarterly_income_data     = quarterly_income_asset
+        poverty_data                 = poverty_asset,
+        state_monthly_data           = state_monthly_asset,
+        brazil_states_sf             = brazil_states_sf_asset,
+        quarterly_income_data        = grep("quarterly_income_data\\.rds$",
+                                              quarterly_income_asset, value = TRUE),
+        quarterly_income_shares_data = grep("quarterly_income_shares_data\\.rds$",
+                                              quarterly_income_asset, value = TRUE),
+        quarterly_lorenz_data        = grep("quarterly_lorenz_data\\.rds$",
+                                              quarterly_income_asset, value = TRUE)
       )
       validate_all_assets(asset_paths)
     }
@@ -620,8 +625,15 @@ list(
                                     n_rows           = attr(state_monthly_asset, "n_rows")),
           brazil_states_sf   = list(latest_ref_month = NA,
                                     n_rows           = attr(brazil_states_sf_asset, "n_rows")),
-          quarterly_income_data = list(latest_ref_month = attr(quarterly_income_asset, "latest_ref_month"),
-                                       n_rows           = attr(quarterly_income_asset, "n_rows"))
+          quarterly_income_data = list(
+            latest_ref_month = attr(quarterly_income_asset, "latest_ref_month"),
+            n_rows           = attr(quarterly_income_asset, "n_rows")[["quarterly_income_data"]]),
+          quarterly_income_shares_data = list(
+            latest_ref_month = attr(quarterly_income_asset, "latest_ref_month"),
+            n_rows           = attr(quarterly_income_asset, "n_rows")[["quarterly_income_shares_data"]]),
+          quarterly_lorenz_data = list(
+            latest_ref_month = attr(quarterly_income_asset, "latest_ref_month"),
+            n_rows           = attr(quarterly_income_asset, "n_rows")[["quarterly_lorenz_data"]])
         )
       )
       dest <- file.path(dashboard_data_dest, "microdata_log.json")

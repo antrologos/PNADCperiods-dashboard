@@ -270,7 +270,9 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
                                            dest_dir,
                                            measures_inequality_path,
                                            utils_deseasonalize_path = NULL) {
-  # measures_inequality.R provides weighted_quantile()
+  # measures_inequality.R provides weighted_gini, palma_ratio,
+  # percentile_ratio, top_share, bottom_share, weighted_quantile,
+  # income_shares, lorenz_points.
   source(measures_inequality_path)
 
   d <- quarterly_recoded
@@ -282,7 +284,7 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
   if (length(missing_cols) > 0L) {
     stop("build_quarterly_income_outputs: missing income columns ",
          paste(missing_cols, collapse = ", "),
-         ". Did recode_quarterly receive deflator_dt and inpc_factor?",
+         ". Did recode_quarterly receive ipca_table and labels_path?",
          call. = FALSE)
   }
 
@@ -297,69 +299,93 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
     list(type = "age_group",    col = "faixa_idade")
   )
 
+  # Phase 2-6: full set of measures (matches build_inequality_outputs).
+  # Sample restricted to people with positive labor income for THIS
+  # specific income_var via the pre-filter `d_iv` below — Gini/Palma
+  # of "individual labor income" naturally exclude non-workers.
   measures_fn <- function(x, w) {
-    keep <- !is.na(x) & x > 0 & !is.na(w) & w > 0
-    if (!any(keep)) {
-      return(list(mean = NA_real_, median = NA_real_, n = 0L))
-    }
+    keep <- !is.na(x) & !is.na(w) & w > 0
     x_k <- x[keep]; w_k <- w[keep]
     list(
-      mean   = sum(x_k * w_k) / sum(w_k),
-      median = weighted_quantile(x_k, w_k, probs = 0.5),
-      n      = length(x_k)
+      gini           = weighted_gini(x, w),
+      palma          = palma_ratio(x, w),
+      p90p10         = percentile_ratio(x, w, 0.9, 0.1),
+      p90p50         = percentile_ratio(x, w, 0.9, 0.5),
+      p50p10         = percentile_ratio(x, w, 0.5, 0.1),
+      top1_share     = top_share(x, w, 1),
+      top5_share     = top_share(x, w, 5),
+      top10_share    = top_share(x, w, 10),
+      bottom50_share = bottom_share(x, w, 50),
+      mean           = if (sum(w, na.rm = TRUE) > 0)
+        sum(x * w, na.rm = TRUE) / sum(w, na.rm = TRUE) else NA_real_,
+      min            = if (length(x_k) > 0) min(x_k)    else NA_real_,
+      p10            = weighted_quantile(x, w, probs = 0.1),
+      p25            = weighted_quantile(x, w, probs = 0.25),
+      median         = weighted_quantile(x, w, probs = 0.5),
+      p75            = weighted_quantile(x, w, probs = 0.75),
+      p90            = weighted_quantile(x, w, probs = 0.9),
+      max            = if (length(x_k) > 0) max(x_k)    else NA_real_
     )
   }
 
-  # Phase 2-2 schema: explicit `income_var` column tagging which variable
-  # produced each row, and a simple `measure ∈ {mean, median}`. The
-  # legacy encoded codes (mean_indiv_hab_princ, etc.) are preserved as
-  # an alias column `legacy_measure` for backwards-compatible dashboards
-  # that haven't yet routed via income_var.
-  parts <- list()
+  shares_specs <- breakdown_specs[
+    vapply(breakdown_specs, function(s) s$type != "uf", logical(1L))]
+  lorenz_specs <- list(
+    list(type = "overall", col = NULL),
+    list(type = "race",    col = "raca"),
+    list(type = "region",  col = "regiao")
+  )
+
+  ineq_parts   <- list()
+  shares_parts <- list()
+  lorenz_parts <- list()
   for (vname in inc_cols) {
     var_short <- sub("^renda_", "", vname)        # e.g. "hab_princ"
     income_var_code <- paste0("indiv_", var_short)
+    # Restrict the sample to people with positive labor income for
+    # THIS income_var. Other indiv vars filter independently in their
+    # own iteration.
+    d_iv <- d[!is.na(get(vname)) & get(vname) > 0]
+    if (!nrow(d_iv)) next
 
-    for (sp in breakdown_specs) {
-      if (sp$type == "overall") {
-        res <- d[, {
-          mres <- measures_fn(get(vname), weight_monthly)
-          if (mres$n < 30L) NULL else
-            list(measure = c("mean", "median"),
-                 value   = c(mres$mean, mres$median),
-                 n_obs   = mres$n)
-        }, by = .(ref_month_yyyymm)]
-        if (!nrow(res)) next
-        res[, `:=`(breakdown_type = "overall",
-                   breakdown_value = "Nacional")]
-      } else {
-        bcol <- sp$col
-        if (!bcol %in% names(d)) next
-        res <- d[!is.na(get(bcol)), {
-          mres <- measures_fn(get(vname), weight_monthly)
-          if (mres$n < 30L) NULL else
-            list(measure = c("mean", "median"),
-                 value   = c(mres$mean, mres$median),
-                 n_obs   = mres$n)
-        }, by = c("ref_month_yyyymm", bcol)]
-        if (!nrow(res)) next
-        data.table::setnames(res, bcol, "breakdown_value")
-        res[, breakdown_type := sp$type]
-        res[, breakdown_value := as.character(breakdown_value)]
-      }
-      res[, income_var := income_var_code]
-      res[, legacy_measure := paste0(measure, "_", income_var_code)]
-      parts[[length(parts) + 1L]] <- res
+    one_ineq <- compute_breakdowns(d_iv, breakdown_specs, measures_fn,
+                                   income_col = vname)
+    if (nrow(one_ineq)) {
+      one_ineq[, income_var := income_var_code]
+      ineq_parts[[length(ineq_parts) + 1L]] <- one_ineq
+    }
+
+    one_shares <- compute_shares(d_iv, shares_specs, income_col = vname)
+    if (nrow(one_shares)) {
+      one_shares[, income_var := income_var_code]
+      shares_parts[[length(shares_parts) + 1L]] <- one_shares
+    }
+
+    one_lorenz <- compute_lorenz(d_iv, lorenz_specs, income_col = vname)
+    if (nrow(one_lorenz)) {
+      one_lorenz[, income_var := income_var_code]
+      lorenz_parts[[length(lorenz_parts) + 1L]] <- one_lorenz
     }
   }
 
-  q_inc <- data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
+  q_inc <- data.table::rbindlist(ineq_parts, use.names = TRUE, fill = TRUE)
   q_inc[, period := as.Date(sprintf("%d-%02d-15",
                                     ref_month_yyyymm %/% 100,
                                     ref_month_yyyymm %% 100))]
 
-  # Append X-13 / STL deseasonalized columns: value_x13, value_stl. Per
-  # (income_var × measure × breakdown_type × breakdown_value) group.
+  q_shares <- data.table::rbindlist(shares_parts,
+                                    use.names = TRUE, fill = TRUE)
+  q_shares[, period := as.Date(sprintf("%d-%02d-15",
+                                       ref_month_yyyymm %/% 100,
+                                       ref_month_yyyymm %% 100))]
+
+  q_lorenz <- data.table::rbindlist(lorenz_parts,
+                                    use.names = TRUE, fill = TRUE)
+
+  # Append X-13 / STL deseasonalized columns to the inequality table.
+  # Per (income_var × measure × breakdown_type × breakdown_value) group.
+  # Shares and lorenz are not deseasonalized (matches build_inequality_
+  # outputs behaviour).
   if (!is.null(utils_deseasonalize_path)) {
     deseasonalize_long_table(
       data = q_inc,
@@ -372,12 +398,27 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
     )
   }
 
-  out_path <- file.path(dest_dir, "quarterly_income_data.rds")
-  saveRDS_atomic(q_inc, out_path)
-  attr(out_path, "latest_ref_month") <-
+  ineq_path   <- file.path(dest_dir, "quarterly_income_data.rds")
+  saveRDS_atomic(q_inc, ineq_path)
+
+  shares_path <- file.path(dest_dir, "quarterly_income_shares_data.rds")
+  saveRDS_atomic(q_shares, shares_path)
+
+  lorenz_path <- file.path(dest_dir, "quarterly_lorenz_data.rds")
+  saveRDS_atomic(q_lorenz, lorenz_path)
+
+  paths <- c(ineq_path, shares_path, lorenz_path)
+  names(paths) <- c("quarterly_income_data",
+                    "quarterly_income_shares_data",
+                    "quarterly_lorenz_data")
+  attr(paths, "latest_ref_month") <-
     as.character(max(q_inc$ref_month_yyyymm, na.rm = TRUE))
-  attr(out_path, "n_rows") <- nrow(q_inc)
-  out_path
+  attr(paths, "n_rows") <- c(
+    quarterly_income_data        = nrow(q_inc),
+    quarterly_income_shares_data = nrow(q_shares),
+    quarterly_lorenz_data        = nrow(q_lorenz)
+  )
+  paths
 }
 
 # ------------------------------------------------------------------------------

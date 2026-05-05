@@ -255,6 +255,8 @@ server <- function(input, output, session) {
     get_lorenz_data = app_data$get_lorenz_data,
     get_income_decomposition_data = app_data$get_income_decomposition_data,
     get_quarterly_income_data = app_data$get_quarterly_income_data,
+    get_quarterly_income_shares_data = app_data$get_quarterly_income_shares_data,
+    get_quarterly_lorenz_data = app_data$get_quarterly_lorenz_data,
     get_poverty_data = app_data$get_poverty_data
   )
 
