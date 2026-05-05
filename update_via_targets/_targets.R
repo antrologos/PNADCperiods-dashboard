@@ -412,7 +412,12 @@ list(
   # without re-doing the recodes.
   tar_target(
     quarterly_recoded,
-    recode_quarterly(quarterly_stacked, crosswalk_target)
+    recode_quarterly(
+      quarterly_stacked, crosswalk_target,
+      deflator_dt = deflator_dt,
+      inpc_factor = inpc_factor_at(inpc_factor_table, as.Date("2024-07-01")),
+      labels_path = labels_path
+    )
   ),
 
   # PR4: annual stack — read 14 visit-1 .fst files once with income variable
@@ -510,6 +515,25 @@ list(
     format = "file"
   ),
 
+  # PR-quarterly-income: monthly individual labor income aggregates from the
+  # mensalized quarterly stack — 4 income vars × {mean, median} = 8 measures,
+  # each by overall + 7 demographic breakdowns. Long-format schema mirrors
+  # inequality_data.rds so the dashboard's Inequality module can route the
+  # extra measures to this asset transparently.
+  tar_target(
+    quarterly_income_asset,
+    {
+      force(t0_backup_targets)
+      build_quarterly_income_outputs(
+        quarterly_recoded = quarterly_recoded,
+        dest_dir = dashboard_data_dest,
+        measures_inequality_path = measures_inequality_path,
+        utils_deseasonalize_path = utils_deseasonalize_path
+      )
+    },
+    format = "file"
+  ),
+
   # geobr fetch + simplify + write — geobr has internal cache so combining
   # network call with the L3 transform doesn't refetch on every run.
   tar_target(
@@ -550,7 +574,8 @@ list(
                                           inequality_assets, value = TRUE),
         poverty_data              = poverty_asset,
         state_monthly_data        = state_monthly_asset,
-        brazil_states_sf          = brazil_states_sf_asset
+        brazil_states_sf          = brazil_states_sf_asset,
+        quarterly_income_data     = quarterly_income_asset
       )
       validate_all_assets(asset_paths)
     }
@@ -585,7 +610,9 @@ list(
           state_monthly_data = list(latest_ref_month = attr(state_monthly_asset, "latest_ref_month"),
                                     n_rows           = attr(state_monthly_asset, "n_rows")),
           brazil_states_sf   = list(latest_ref_month = NA,
-                                    n_rows           = attr(brazil_states_sf_asset, "n_rows"))
+                                    n_rows           = attr(brazil_states_sf_asset, "n_rows")),
+          quarterly_income_data = list(latest_ref_month = attr(quarterly_income_asset, "latest_ref_month"),
+                                       n_rows           = attr(quarterly_income_asset, "n_rows"))
         )
       )
       dest <- file.path(dashboard_data_dest, "microdata_log.json")

@@ -23,12 +23,15 @@
 #' @param crosswalk data.table from `crosswalk_target`
 #' @return data.table with all derived labor flags + ref_month_yyyymm +
 #'   weight_monthly, filtered to V2009>=14 and non-NA UF/weight.
-recode_quarterly <- function(quarterly_stacked, crosswalk) {
+recode_quarterly <- function(quarterly_stacked, crosswalk,
+                             deflator_dt = NULL, inpc_factor = NULL,
+                             labels_path = NULL) {
   pnadc <- data.table::copy(quarterly_stacked)
 
   numeric_cols <- c("Ano", "Trimestre",
                     "V2009", "V1028", "VD4001", "VD4002", "VD4003", "VD4004",
-                    "VD4004A", "VD4005", "VD4009", "VD4010", "VD4012", "V4019")
+                    "VD4004A", "VD4005", "VD4009", "VD4010", "VD4012", "V4019",
+                    "VD4016", "VD4017", "VD4019", "VD4020")
   for (col in numeric_cols) {
     if (col %in% names(pnadc) && !is.numeric(pnadc[[col]])) {
       pnadc[, (col) := as.numeric(get(col))]
@@ -112,7 +115,56 @@ recode_quarterly <- function(quarterly_stacked, crosswalk) {
     weight_var = "V1028", anchor = "quarter",
     calibrate = TRUE, verbose = TRUE
   )
-  pnadc[!is.na(weight_monthly) & !is.na(UF) & V2009 >= 14]
+  pnadc <- pnadc[!is.na(weight_monthly) & !is.na(UF) & V2009 >= 14]
+
+  # ---- Individual labor income (deflated) + demographic groupings ----
+  # When deflator_dt + inpc_factor + labels_path are supplied, attach
+  # 4 deflated labor-income columns (renda_hab_princ, renda_efe_princ,
+  # renda_hab_todos, renda_efe_todos) and the demographic grouping
+  # columns (sexo, raca, faixa_educ, regiao, uf_abbrev, urbano,
+  # faixa_idade) so quarterly_income_aggregates can roll them up by
+  # (month × breakdown_type × breakdown_value). Keeping these args
+  # optional preserves callers (state_monthly_asset) that don't need
+  # the income columns.
+  inc_vars <- c("VD4016", "VD4017", "VD4019", "VD4020")
+  inc_out  <- c("renda_hab_princ", "renda_efe_princ",
+                "renda_hab_todos", "renda_efe_todos")
+  has_income_vars <- all(inc_vars %in% names(pnadc))
+
+  if (!is.null(deflator_dt) && is.numeric(inpc_factor) && has_income_vars) {
+    pnadc[, UF := as.numeric(UF)]
+    deflator <- data.table::copy(deflator_dt)
+    data.table::setkeyv(deflator, c("Ano", "Trimestre", "UF"))
+    data.table::setkeyv(pnadc,    c("Ano", "Trimestre", "UF"))
+    pnadc <- deflator[pnadc]
+    for (i in seq_along(inc_vars)) {
+      v   <- inc_vars[i]
+      out <- inc_out[i]
+      pnadc[, (out) := data.table::fifelse(
+        is.na(get(v)),
+        NA_real_,
+        get(v) * CO2 * inpc_factor
+      )]
+    }
+    pnadc[, inpc_factor := inpc_factor]
+  } else {
+    for (out in inc_out) pnadc[, (out) := NA_real_]
+  }
+
+  if (!is.null(labels_path)) {
+    # Rename demographic vars to lowercase to match build_demographic_groupings
+    demog_old <- c("V2007", "V2010", "V1022", "VD3004")
+    demog_new <- c("v2007", "v2010", "v1022", "vd3004")
+    for (i in seq_along(demog_old)) {
+      if (demog_old[i] %in% names(pnadc)) {
+        data.table::setnames(pnadc, demog_old[i], demog_new[i])
+      }
+    }
+    source(labels_path)  # build_demographic_groupings sources sex_label etc.
+    pnadc <- build_demographic_groupings(pnadc)
+  }
+
+  pnadc
 }
 
 

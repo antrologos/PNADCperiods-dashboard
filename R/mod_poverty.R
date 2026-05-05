@@ -558,8 +558,9 @@ povertyServer <- function(id, shared_data, lang) {
       }
 
       # Optional 3-month rolling-mean overlay (mirror SIDRA "show quarterly").
-      # Computed on-the-fly via frollmean(value, 3, align = "right") per group.
-      if (isTRUE(input$show_quarterly)) {
+      # Mirrors SIDRA: only shown when deseason == "none" (otherwise the
+      # adjusted line already supplies the smoothing reference).
+      if (isTRUE(input$show_quarterly) && deseason == "none") {
         # Use raw_col so the comparison stays on the same baseline as the
         # adjusted series.
         if (breakdown == "overall") {
@@ -787,13 +788,21 @@ povertyServer <- function(id, shared_data, lang) {
     }
 
     # ====================================================================
-    # Difference plot — value minus 3-month rolling-right-mean per group.
-    # Uses raw FGT (or _smooth when smoothing is active) as the baseline.
+    # Difference plot — adapts to the seasonal-adjustment toggle:
+    #   - none: fgt − rolling-3 mean
+    #   - x13:  fgt − fgtN_x13 (X-13 seasonal component)
+    #   - stl:  fgt − fgtN_stl (STL seasonal component)
+    #   - both: overlay both seasonal components
     # Mirrors the SIDRA Series Explorer "Mostrar diferença" pattern.
     # ====================================================================
 
     output$difference_plot_title <- renderText({
-      i18n("plots.difference_title", lang())
+      lang_val <- lang()
+      m <- input$deseason %||% "none"
+      switch(m,
+        x13  = i18n("plots.diff_seasonal_x13", lang_val),
+        stl  = i18n("plots.diff_seasonal_stl", lang_val),
+        i18n("plots.difference_title", lang_val))
     })
 
     output$difference_plot <- renderPlotly({
@@ -805,27 +814,84 @@ povertyServer <- function(id, shared_data, lang) {
       breakdown <- input$breakdown
       validate(need(!is.null(measure), ""), need(!is.null(breakdown), ""))
 
-      # Use the raw FGT for the baseline (matches the seasonal-adjustment
-      # convention of the main plot).
-      raw_col <- if (measure == "all_fgt") "fgt0" else measure
+      # Choose the FGT column whose difference we compute (for "all_fgt"
+      # mode the difference plot focuses on FGT-0 as a representative).
+      fgt_base <- if (measure == "all_fgt") "fgt0" else measure
+      raw_col  <- fgt_base
+      x13_col  <- paste0(fgt_base, "_x13")
+      stl_col  <- paste0(fgt_base, "_stl")
+
+      m <- input$deseason %||% "none"
+      has_x13 <- x13_col %in% names(sub)
+      has_stl <- stl_col %in% names(sub)
+      if (m %in% c("x13", "both") && !has_x13) m <- "none"
+      if (m == "stl" && !has_stl) m <- "none"
+
+      compute_diff <- function(df, method) {
+        switch(method,
+          none = df[[raw_col]] -
+                   data.table::frollmean(df[[raw_col]], 3, align = "right"),
+          x13  = df[[raw_col]] - df[[x13_col]],
+          stl  = df[[raw_col]] - df[[stl_col]]
+        )
+      }
+
+      x13_label <- i18n("plots.seasonal_x13", lang_val)
+      stl_label <- i18n("plots.seasonal_stl", lang_val)
+      mq_label  <- i18n("plots.monthly_minus_quarterly", lang_val)
+
+      add_diff_traces <- function(p, df, base_color, name_prefix = "",
+                                  show_legend_default = TRUE) {
+        if (m == "both") {
+          if (has_x13) {
+            p <- p %>% add_trace(
+              x = df$period, y = compute_diff(df, "x13"),
+              type = "scatter", mode = "lines",
+              line = list(color = base_color, width = 1.5),
+              name = paste0(name_prefix, x13_label),
+              showlegend = show_legend_default
+            )
+          }
+          if (has_stl) {
+            p <- p %>% add_trace(
+              x = df$period, y = compute_diff(df, "stl"),
+              type = "scatter", mode = "lines",
+              line = list(color = base_color, width = 1.5, dash = "dash"),
+              name = paste0(name_prefix, stl_label),
+              showlegend = show_legend_default
+            )
+          }
+        } else {
+          lab <- switch(m,
+            none = mq_label,
+            x13  = x13_label,
+            stl  = stl_label)
+          p <- p %>% add_trace(
+            x = df$period, y = compute_diff(df, m),
+            type = "scatter", mode = "lines",
+            line = list(color = base_color, width = 1.5),
+            fill = if (breakdown == "overall") "tozeroy" else "none",
+            fillcolor = if (breakdown == "overall")
+              "rgba(25, 118, 210, 0.15)" else NULL,
+            name = paste0(name_prefix, lab),
+            showlegend = show_legend_default
+          )
+        }
+        p
+      }
 
       if (breakdown == "overall") {
         setorder(sub, period)
-        diff_vals <- sub[[raw_col]] -
-          data.table::frollmean(sub[[raw_col]], 3, align = "right")
-        plot_ly(
-          x = sub$period, y = diff_vals,
-          type = "scatter", mode = "lines",
-          line = list(color = "#1976D2", width = 1.5),
-          fill = "tozeroy",
-          fillcolor = "rgba(25, 118, 210, 0.15)",
-          name = i18n("plots.monthly_minus_quarterly", lang_val)
-        ) %>% layout(
+        p <- plot_ly() %>%
+          add_diff_traces(sub, "#1976D2",
+                           name_prefix = "",
+                           show_legend_default = m == "both")
+        p %>% layout(
           xaxis = list(title = ""),
           yaxis = list(title = "", tickformat = ".1%"),
           separators = get_plotly_separators(lang_val),
           hovermode = "x unified",
-          showlegend = FALSE
+          showlegend = m == "both"
         )
       } else {
         groups <- unique(sub$breakdown_value)
@@ -837,14 +903,9 @@ povertyServer <- function(id, shared_data, lang) {
         for (i in seq_along(groups)) {
           gdata <- sub[breakdown_value == groups[i]]
           setorder(gdata, period)
-          diff_vals <- gdata[[raw_col]] -
-            data.table::frollmean(gdata[[raw_col]], 3, align = "right")
-          p <- p %>% add_trace(
-            x = gdata$period, y = diff_vals,
-            type = "scatter", mode = "lines",
-            line = list(color = colors[i], width = 1.5),
-            name = groups[i]
-          )
+          p <- add_diff_traces(p, gdata, colors[i],
+                                name_prefix = paste0(groups[i], " "),
+                                show_legend_default = TRUE)
         }
         legend_cfg <- if (length(groups) > 6) {
           list(orientation = "v", x = 1.02, y = 1, font = list(size = 10))

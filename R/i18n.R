@@ -516,6 +516,39 @@ translations <- list(
                         pt = "Renda Domiciliar Per Capita - Média"),
     median_income = list(en = "Household Per Capita - Median",
                           pt = "Renda Domiciliar Per Capita - Mediana"),
+    # Quarterly mensalized individual labor income (4 PNADC vars × mean/median)
+    mean_indiv_hab_princ = list(
+      en = "Usual Earnings (Main Job) - Mean",
+      pt = "Rend. Habitual Trabalho Principal - Média"
+    ),
+    median_indiv_hab_princ = list(
+      en = "Usual Earnings (Main Job) - Median",
+      pt = "Rend. Habitual Trabalho Principal - Mediana"
+    ),
+    mean_indiv_efe_princ = list(
+      en = "Effective Earnings (Main Job) - Mean",
+      pt = "Rend. Efetivo Trabalho Principal - Média"
+    ),
+    median_indiv_efe_princ = list(
+      en = "Effective Earnings (Main Job) - Median",
+      pt = "Rend. Efetivo Trabalho Principal - Mediana"
+    ),
+    mean_indiv_hab_todos = list(
+      en = "Usual Earnings (All Jobs) - Mean",
+      pt = "Rend. Habitual Todos os Trabalhos - Média"
+    ),
+    median_indiv_hab_todos = list(
+      en = "Usual Earnings (All Jobs) - Median",
+      pt = "Rend. Habitual Todos os Trabalhos - Mediana"
+    ),
+    mean_indiv_efe_todos = list(
+      en = "Effective Earnings (All Jobs) - Mean",
+      pt = "Rend. Efetivo Todos os Trabalhos - Média"
+    ),
+    median_indiv_efe_todos = list(
+      en = "Effective Earnings (All Jobs) - Median",
+      pt = "Rend. Efetivo Todos os Trabalhos - Mediana"
+    ),
     # Shares
     quintile_shares = list(en = "Quintile Shares", pt = "Parcelas por Quintil"),
     decile_shares = list(en = "Decile Shares", pt = "Parcelas por Decil"),

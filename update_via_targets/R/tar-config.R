@@ -77,7 +77,11 @@ quarterly_required_vars <- c(
   "V1028", "UF", "posest", "posest_sxi", "Estrato",
   # Labor market vars used by state_monthly_data
   "VD4001", "VD4002", "VD4003", "VD4004", "VD4004A",
-  "VD4005", "VD4009", "VD4010", "VD4012", "V4019"
+  "VD4005", "VD4009", "VD4010", "VD4012", "V4019",
+  # Individual labor income (used by quarterly_income_aggregates)
+  "VD4016", "VD4017", "VD4019", "VD4020",
+  # Demographic vars for breakdowns on the quarterly aggregates
+  "V2007", "V2010", "V1022", "VD3004"
 )
 
 annual_required_vars <- c(

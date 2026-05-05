@@ -213,6 +213,126 @@ build_demographic_groupings <- function(d) {
 }
 
 # ------------------------------------------------------------------------------
+# Layer 3 — quarterly individual labor income aggregates
+# ------------------------------------------------------------------------------
+#
+# Produces a long-format data.table mirroring the schema of inequality_data
+# (ref_month_yyyymm, measure, value, n_obs, breakdown_type, breakdown_value,
+#  period, value_x13, value_stl), but with `measure` taking 8 codes built
+# from {mean, median} × {indiv_hab_princ, indiv_efe_princ, indiv_hab_todos,
+# indiv_efe_todos}. Series are computed per (month × breakdown × var) over
+# people with positive deflated labor income from the mensalized quarterly
+# stack (renda_*_*_pc are computed in recode_quarterly when deflator_dt and
+# inpc_factor are supplied).
+build_quarterly_income_outputs <- function(quarterly_recoded,
+                                           dest_dir,
+                                           measures_inequality_path,
+                                           utils_deseasonalize_path = NULL) {
+  # measures_inequality.R provides weighted_quantile()
+  source(measures_inequality_path)
+
+  d <- quarterly_recoded
+
+  # Sanity: required income columns
+  inc_cols <- c("renda_hab_princ", "renda_efe_princ",
+                "renda_hab_todos", "renda_efe_todos")
+  missing_cols <- setdiff(inc_cols, names(d))
+  if (length(missing_cols) > 0L) {
+    stop("build_quarterly_income_outputs: missing income columns ",
+         paste(missing_cols, collapse = ", "),
+         ". Did recode_quarterly receive deflator_dt and inpc_factor?",
+         call. = FALSE)
+  }
+
+  breakdown_specs <- list(
+    list(type = "overall",      col = NULL),
+    list(type = "sex",          col = "sexo"),
+    list(type = "race",         col = "raca"),
+    list(type = "education",    col = "faixa_educ"),
+    list(type = "region",       col = "regiao"),
+    list(type = "uf",           col = "uf_abbrev"),
+    list(type = "urban_rural",  col = "urbano"),
+    list(type = "age_group",    col = "faixa_idade")
+  )
+
+  measures_fn <- function(x, w) {
+    keep <- !is.na(x) & x > 0 & !is.na(w) & w > 0
+    if (!any(keep)) {
+      return(list(mean = NA_real_, median = NA_real_, n = 0L))
+    }
+    x_k <- x[keep]; w_k <- w[keep]
+    list(
+      mean   = sum(x_k * w_k) / sum(w_k),
+      median = weighted_quantile(x_k, w_k, probs = 0.5),
+      n      = length(x_k)
+    )
+  }
+
+  parts <- list()
+  for (vname in inc_cols) {
+    var_short <- sub("^renda_", "", vname)        # e.g. "hab_princ"
+    var_short <- gsub("_", "_", var_short)        # noop kept for clarity
+
+    for (sp in breakdown_specs) {
+      if (sp$type == "overall") {
+        res <- d[, {
+          mres <- measures_fn(get(vname), weight_monthly)
+          if (mres$n < 30L) NULL else
+            list(measure_stat = c("mean", "median"),
+                 value = c(mres$mean, mres$median),
+                 n_obs = mres$n)
+        }, by = .(ref_month_yyyymm)]
+        if (!nrow(res)) next
+        res[, `:=`(breakdown_type = "overall",
+                   breakdown_value = "Nacional")]
+      } else {
+        bcol <- sp$col
+        if (!bcol %in% names(d)) next
+        res <- d[!is.na(get(bcol)), {
+          mres <- measures_fn(get(vname), weight_monthly)
+          if (mres$n < 30L) NULL else
+            list(measure_stat = c("mean", "median"),
+                 value = c(mres$mean, mres$median),
+                 n_obs = mres$n)
+        }, by = c("ref_month_yyyymm", bcol)]
+        if (!nrow(res)) next
+        data.table::setnames(res, bcol, "breakdown_value")
+        res[, breakdown_type := sp$type]
+        res[, breakdown_value := as.character(breakdown_value)]
+      }
+      res[, measure := paste0(measure_stat, "_indiv_", var_short)]
+      res[, measure_stat := NULL]
+      parts[[length(parts) + 1L]] <- res
+    }
+  }
+
+  q_inc <- data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
+  q_inc[, period := as.Date(sprintf("%d-%02d-15",
+                                    ref_month_yyyymm %/% 100,
+                                    ref_month_yyyymm %% 100))]
+
+  # Append X-13 / STL deseasonalized columns: value_x13, value_stl. Per
+  # (measure × breakdown_type × breakdown_value) group.
+  if (!is.null(utils_deseasonalize_path)) {
+    deseasonalize_long_table(
+      data = q_inc,
+      time_col = "ref_month_yyyymm",
+      group_cols = c("measure", "breakdown_type", "breakdown_value"),
+      value_cols = "value",
+      methods = c("x13", "stl"),
+      utils_deseasonalize_path = utils_deseasonalize_path
+    )
+  }
+
+  out_path <- file.path(dest_dir, "quarterly_income_data.rds")
+  saveRDS_atomic(q_inc, out_path)
+  attr(out_path, "latest_ref_month") <-
+    as.character(max(q_inc$ref_month_yyyymm, na.rm = TRUE))
+  attr(out_path, "n_rows") <- nrow(q_inc)
+  out_path
+}
+
+# ------------------------------------------------------------------------------
 # Layer 3 — inequality outputs (4 .rds)
 # ------------------------------------------------------------------------------
 

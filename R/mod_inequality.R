@@ -134,8 +134,42 @@ inequalityServer <- function(id, shared_data, lang) {
     # Reactive: Available data
     # ====================================================================
 
-    ineq_data <- reactive({
+    # The 8 measure codes routed to the quarterly individual-income asset
+    # (computed from the mensalized quarterly stack, not the annual visits).
+    # All others fall back to inequality_data.rds.
+    QUARTERLY_INCOME_MEASURES <- c(
+      "mean_indiv_hab_princ", "median_indiv_hab_princ",
+      "mean_indiv_efe_princ", "median_indiv_efe_princ",
+      "mean_indiv_hab_todos", "median_indiv_hab_todos",
+      "mean_indiv_efe_todos", "median_indiv_efe_todos"
+    )
+
+    # Annual-only ineq data (renda domiciliar per capita-based measures)
+    annual_ineq_data <- reactive({
       shared_data$get_inequality_data()
+    })
+
+    # Quarterly individual labor-income data (when available)
+    quarterly_income_data <- reactive({
+      if (is.function(shared_data$get_quarterly_income_data)) {
+        tryCatch(shared_data$get_quarterly_income_data(),
+                 error = function(e) NULL)
+      } else {
+        NULL
+      }
+    })
+
+    # Routing reactive: returns the data.table that holds the selected
+    # measure. The two tables share the same long-format schema
+    # (ref_month_yyyymm, measure, value, n_obs, breakdown_type,
+    #  breakdown_value, period [, value_x13, value_stl]).
+    ineq_data <- reactive({
+      m <- input$measure
+      if (!is.null(m) && m %in% QUARTERLY_INCOME_MEASURES) {
+        d <- quarterly_income_data()
+        if (!is.null(d) && nrow(d) > 0) return(d)
+      }
+      annual_ineq_data()
     })
 
     shares_data <- reactive({
@@ -197,11 +231,49 @@ inequalityServer <- function(id, shared_data, lang) {
       theme <- input$theme
       if (is.null(theme)) theme <- "inequality_indexes"
 
+      # Quarterly individual labor-income measures only appear when the
+      # corresponding pre-computed asset is present in shared_data.
+      qinc_data <- if (is.function(shared_data$get_quarterly_income_data)) {
+        tryCatch(shared_data$get_quarterly_income_data(),
+                 error = function(e) NULL)
+      } else {
+        NULL
+      }
+      qinc_available <- !is.null(qinc_data) &&
+        is.data.frame(qinc_data) && nrow(qinc_data) > 0
+
       switch(theme,
-        income_level = c(
-          setNames("mean_income", i18n("inequality.mean_income", lang_val)),
-          setNames("median_income", i18n("inequality.median_income", lang_val))
-        ),
+        income_level = {
+          base <- c(
+            setNames("mean_income",
+                     i18n("inequality.mean_income", lang_val)),
+            setNames("median_income",
+                     i18n("inequality.median_income", lang_val))
+          )
+          if (qinc_available) {
+            c(
+              base,
+              setNames("mean_indiv_hab_princ",
+                       i18n("inequality.mean_indiv_hab_princ", lang_val)),
+              setNames("median_indiv_hab_princ",
+                       i18n("inequality.median_indiv_hab_princ", lang_val)),
+              setNames("mean_indiv_efe_princ",
+                       i18n("inequality.mean_indiv_efe_princ", lang_val)),
+              setNames("median_indiv_efe_princ",
+                       i18n("inequality.median_indiv_efe_princ", lang_val)),
+              setNames("mean_indiv_hab_todos",
+                       i18n("inequality.mean_indiv_hab_todos", lang_val)),
+              setNames("median_indiv_hab_todos",
+                       i18n("inequality.median_indiv_hab_todos", lang_val)),
+              setNames("mean_indiv_efe_todos",
+                       i18n("inequality.mean_indiv_efe_todos", lang_val)),
+              setNames("median_indiv_efe_todos",
+                       i18n("inequality.median_indiv_efe_todos", lang_val))
+            )
+          } else {
+            base
+          }
+        },
         inequality_indexes = c(
           setNames("gini", i18n("inequality.gini", lang_val)),
           setNames("palma", i18n("inequality.palma", lang_val)),
@@ -860,9 +932,9 @@ inequalityServer <- function(id, shared_data, lang) {
       }
 
       # Optional 3-month rolling-mean overlay (mirror SIDRA "show quarterly").
-      # Computed on-the-fly because Inequality has no separate rolling-quarter
-      # data source — uses frollmean(value, 3, align = "right") per group.
-      if (isTRUE(input$show_quarterly)) {
+      # Mirrors SIDRA: only shown when deseason == "none" (otherwise the
+      # adjusted line already supplies the smoothing reference).
+      if (isTRUE(input$show_quarterly) && deseason == "none") {
         if (breakdown == "overall") {
           setorder(sub, period)
           rolling <- data.table::frollmean(sub$value, 3, align = "right")
@@ -890,11 +962,19 @@ inequalityServer <- function(id, shared_data, lang) {
         }
       }
 
-      # Format y-axis based on measure
+      # Format y-axis based on measure (currency: hhinc_pc + the 8
+      # quarterly individual labor-income measures)
+      currency_measures <- c(
+        "mean_income", "median_income",
+        "mean_indiv_hab_princ", "median_indiv_hab_princ",
+        "mean_indiv_efe_princ", "median_indiv_efe_princ",
+        "mean_indiv_hab_todos", "median_indiv_hab_todos",
+        "mean_indiv_efe_todos", "median_indiv_efe_todos"
+      )
       yformat <- if (!is.null(measure) && measure %in%
                      c("top1_share", "top5_share", "top10_share", "bottom50_share")) {
         ".1%"
-      } else if (!is.null(measure) && measure %in% c("mean_income", "median_income")) {
+      } else if (!is.null(measure) && measure %in% currency_measures) {
         ",.0f"
       } else {
         ",.3f"
@@ -920,12 +1000,21 @@ inequalityServer <- function(id, shared_data, lang) {
     })
 
     # ====================================================================
-    # Difference plot — value minus 3-month rolling-right-mean per group
-    # Mirrors the SIDRA Series Explorer "Mostrar diferença" pattern
+    # Difference plot — adapts to the seasonal-adjustment toggle:
+    #   - none: value − rolling-3 mean (deviation from local trend)
+    #   - x13:  value − value_x13 (X-13 seasonal component)
+    #   - stl:  value − value_stl (STL seasonal component)
+    #   - both: overlay both seasonal components
+    # Mirrors the SIDRA Series Explorer "Mostrar diferença" pattern.
     # ====================================================================
 
     output$difference_plot_title <- renderText({
-      i18n("plots.difference_title", lang())
+      lang_val <- lang()
+      m <- input$deseason %||% "none"
+      switch(m,
+        x13  = i18n("plots.diff_seasonal_x13", lang_val),
+        stl  = i18n("plots.diff_seasonal_stl", lang_val),
+        i18n("plots.difference_title", lang_val))
     })
 
     output$difference_plot <- renderPlotly({
@@ -936,23 +1025,77 @@ inequalityServer <- function(id, shared_data, lang) {
       breakdown <- input$breakdown
       validate(need(!is.null(breakdown), ""))
 
+      m <- input$deseason %||% "none"
+      has_x13 <- "value_x13" %in% names(sub)
+      has_stl <- "value_stl" %in% names(sub)
+      if (m %in% c("x13", "both") && !has_x13) m <- "none"
+      if (m == "stl" && !has_stl) m <- "none"
+
+      # Helper: difference series for one (sub-)data frame.
+      compute_diff <- function(df, method) {
+        switch(method,
+          none = df$value - data.table::frollmean(df$value, 3, align = "right"),
+          x13  = df$value - df$value_x13,
+          stl  = df$value - df$value_stl
+        )
+      }
+
+      x13_label <- i18n("plots.seasonal_x13", lang_val)
+      stl_label <- i18n("plots.seasonal_stl", lang_val)
+      mq_label  <- i18n("plots.monthly_minus_quarterly", lang_val)
+
+      add_diff_traces <- function(p, df, base_color, name_prefix = "",
+                                  show_legend_default = TRUE) {
+        if (m == "both") {
+          if (has_x13) {
+            p <- p %>% add_trace(
+              x = df$period, y = compute_diff(df, "x13"),
+              type = "scatter", mode = "lines",
+              line = list(color = base_color, width = 1.5),
+              name = paste0(name_prefix, x13_label),
+              showlegend = show_legend_default
+            )
+          }
+          if (has_stl) {
+            p <- p %>% add_trace(
+              x = df$period, y = compute_diff(df, "stl"),
+              type = "scatter", mode = "lines",
+              line = list(color = base_color, width = 1.5, dash = "dash"),
+              name = paste0(name_prefix, stl_label),
+              showlegend = show_legend_default
+            )
+          }
+        } else {
+          lab <- switch(m,
+            none = mq_label,
+            x13  = x13_label,
+            stl  = stl_label)
+          p <- p %>% add_trace(
+            x = df$period, y = compute_diff(df, m),
+            type = "scatter", mode = "lines",
+            line = list(color = base_color, width = 1.5),
+            fill = if (breakdown == "overall") "tozeroy" else "none",
+            fillcolor = if (breakdown == "overall")
+              "rgba(25, 118, 210, 0.15)" else NULL,
+            name = paste0(name_prefix, lab),
+            showlegend = show_legend_default
+          )
+        }
+        p
+      }
+
       if (breakdown == "overall") {
         setorder(sub, period)
-        diff_vals <- sub$value -
-          data.table::frollmean(sub$value, 3, align = "right")
-        plot_ly(
-          x = sub$period, y = diff_vals,
-          type = "scatter", mode = "lines",
-          line = list(color = "#1976D2", width = 1.5),
-          fill = "tozeroy",
-          fillcolor = "rgba(25, 118, 210, 0.15)",
-          name = i18n("plots.monthly_minus_quarterly", lang_val)
-        ) %>% layout(
+        p <- plot_ly() %>%
+          add_diff_traces(sub, "#1976D2",
+                           name_prefix = "",
+                           show_legend_default = m == "both")
+        p %>% layout(
           xaxis = list(title = ""),
           yaxis = list(title = ""),
           separators = get_plotly_separators(lang_val),
           hovermode = "x unified",
-          showlegend = FALSE
+          showlegend = m == "both"
         )
       } else {
         groups <- unique(sub$breakdown_value)
@@ -964,14 +1107,9 @@ inequalityServer <- function(id, shared_data, lang) {
         for (i in seq_along(groups)) {
           gdata <- sub[breakdown_value == groups[i]]
           setorder(gdata, period)
-          diff_vals <- gdata$value -
-            data.table::frollmean(gdata$value, 3, align = "right")
-          p <- p %>% add_trace(
-            x = gdata$period, y = diff_vals,
-            type = "scatter", mode = "lines",
-            line = list(color = colors[i], width = 1.5),
-            name = groups[i]
-          )
+          p <- add_diff_traces(p, gdata, colors[i],
+                                name_prefix = paste0(groups[i], " "),
+                                show_legend_default = TRUE)
         }
         legend_cfg <- if (length(groups) > 6) {
           list(orientation = "v", x = 1.02, y = 1, font = list(size = 10))
@@ -1038,7 +1176,13 @@ inequalityServer <- function(id, shared_data, lang) {
         # Format
         is_pct <- measure %in% c("top1_share", "top5_share", "top10_share",
                                    "bottom50_share")
-        is_currency <- measure %in% c("mean_income", "median_income")
+        is_currency <- measure %in% c(
+          "mean_income", "median_income",
+          "mean_indiv_hab_princ", "median_indiv_hab_princ",
+          "mean_indiv_efe_princ", "median_indiv_efe_princ",
+          "mean_indiv_hab_todos", "median_indiv_hab_todos",
+          "mean_indiv_efe_todos", "median_indiv_efe_todos"
+        )
 
         fmt <- function(x) {
           if (is.na(x)) return(i18n("stats.na", lang_val))
