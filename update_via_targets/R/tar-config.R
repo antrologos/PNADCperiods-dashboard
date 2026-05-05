@@ -92,8 +92,14 @@ annual_required_vars <- c(
   "UF", "Estrato",
   # Weights
   "V1032", "V1028", "posest", "posest_sxi",
-  # Total per capita income (IBGE pre-calculated)
-  "VD5008",
+  # Household income composites (IBGE pre-calculated; used by Phase 2):
+  #   VD5001 = renda dom. efetiva total
+  #   VD5002 = renda dom. efetiva per capita
+  #   VD5007 = renda dom. (habitual trab. + efetivo outras) total
+  #   VD5008 = renda dom. (habitual trab. + efetivo outras) per capita
+  # All 4 exclude rendimentos de cartão/tíquete (que só existem 2015-Q4+);
+  # series histórica completa desde 2012-Q1.
+  "VD5001", "VD5002", "VD5007", "VD5008",
   # Labor income
   "VD4019", "VD4020",
   # Income by source — post-2015q4 (new format)

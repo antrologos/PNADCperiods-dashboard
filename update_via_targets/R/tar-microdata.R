@@ -102,14 +102,40 @@ deflate_incomes <- function(d, ipca_table) {
 
   # Years with the full income module: keep legacy behaviour (NA -> 0).
   # Years flagged as simplified (e.g. PNADC anual 2025 visita 1) lack
-  # VD5008 entirely; propagate NA so hhinc_pc is NA, weighted_gini /
-  # fgt_all return NA, and the downstream filter excludes the year.
-  d[income_module_complete == TRUE,
-    hhinc_pc_nominal := data.table::fifelse(is.na(vd5008), 0, as.numeric(vd5008))]
-  d[income_module_complete == FALSE,
-    hhinc_pc_nominal := NA_real_]
-  # VD5008 = RDPC habitual → habitual deflator
-  d[, hhinc_pc := hhinc_pc_nominal * ipca_deflator_hab]
+  # VD500* entirely; propagate NA so all real columns are NA,
+  # weighted_gini / fgt_all return NA, and the downstream filter
+  # excludes the year.
+  hh_nominal <- list(
+    hhinc_total_efe_nominal = list(src = "vd5001", kind = "efetivo"),
+    hhinc_pc_efe_nominal    = list(src = "vd5002", kind = "efetivo"),
+    hhinc_total_hab_nominal = list(src = "vd5007", kind = "habitual"),
+    hhinc_pc_hab_nominal    = list(src = "vd5008", kind = "habitual")
+  )
+  for (out in names(hh_nominal)) {
+    src <- hh_nominal[[out]]$src
+    if (src %in% names(d)) {
+      d[income_module_complete == TRUE,
+        (out) := data.table::fifelse(is.na(get(src)), 0, as.numeric(get(src)))]
+      d[income_module_complete == FALSE, (out) := NA_real_]
+    } else {
+      d[, (out) := NA_real_]
+    }
+  }
+
+  # 4 deflated household income variants. Phase 2 deflation: VD5001/VD5002
+  # use the efetivo deflator (their work component is effective labor),
+  # VD5007/VD5008 use the habitual deflator.
+  d[, hhinc_total_efe := hhinc_total_efe_nominal * ipca_deflator_efe]
+  d[, hhinc_pc_efe    := hhinc_pc_efe_nominal    * ipca_deflator_efe]
+  d[, hhinc_total_hab := hhinc_total_hab_nominal * ipca_deflator_hab]
+  d[, hhinc_pc_hab    := hhinc_pc_hab_nominal    * ipca_deflator_hab]
+
+  # Backwards-compatible aliases used by existing builders/tests:
+  #   hhinc_pc_nominal points to the VD5008 (habitual per capita) nominal
+  #   hhinc_pc        points to the VD5008-deflated value
+  d[, hhinc_pc_nominal := hhinc_pc_hab_nominal]
+  d[, hhinc_pc         := hhinc_pc_hab]
+
   d[, vd4019_num := data.table::fifelse(is.na(vd4019), 0, as.numeric(vd4019))]
   d[, vd4020_num := data.table::fifelse(is.na(vd4020), 0, as.numeric(vd4020))]
   for (v in c("v5001a2", "v5002a2", "v5003a2", "v5004a2",
@@ -277,19 +303,24 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
     )
   }
 
+  # Phase 2-2 schema: explicit `income_var` column tagging which variable
+  # produced each row, and a simple `measure ∈ {mean, median}`. The
+  # legacy encoded codes (mean_indiv_hab_princ, etc.) are preserved as
+  # an alias column `legacy_measure` for backwards-compatible dashboards
+  # that haven't yet routed via income_var.
   parts <- list()
   for (vname in inc_cols) {
     var_short <- sub("^renda_", "", vname)        # e.g. "hab_princ"
-    var_short <- gsub("_", "_", var_short)        # noop kept for clarity
+    income_var_code <- paste0("indiv_", var_short)
 
     for (sp in breakdown_specs) {
       if (sp$type == "overall") {
         res <- d[, {
           mres <- measures_fn(get(vname), weight_monthly)
           if (mres$n < 30L) NULL else
-            list(measure_stat = c("mean", "median"),
-                 value = c(mres$mean, mres$median),
-                 n_obs = mres$n)
+            list(measure = c("mean", "median"),
+                 value   = c(mres$mean, mres$median),
+                 n_obs   = mres$n)
         }, by = .(ref_month_yyyymm)]
         if (!nrow(res)) next
         res[, `:=`(breakdown_type = "overall",
@@ -300,17 +331,17 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
         res <- d[!is.na(get(bcol)), {
           mres <- measures_fn(get(vname), weight_monthly)
           if (mres$n < 30L) NULL else
-            list(measure_stat = c("mean", "median"),
-                 value = c(mres$mean, mres$median),
-                 n_obs = mres$n)
+            list(measure = c("mean", "median"),
+                 value   = c(mres$mean, mres$median),
+                 n_obs   = mres$n)
         }, by = c("ref_month_yyyymm", bcol)]
         if (!nrow(res)) next
         data.table::setnames(res, bcol, "breakdown_value")
         res[, breakdown_type := sp$type]
         res[, breakdown_value := as.character(breakdown_value)]
       }
-      res[, measure := paste0(measure_stat, "_indiv_", var_short)]
-      res[, measure_stat := NULL]
+      res[, income_var := income_var_code]
+      res[, legacy_measure := paste0(measure, "_", income_var_code)]
       parts[[length(parts) + 1L]] <- res
     }
   }
@@ -321,12 +352,13 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
                                     ref_month_yyyymm %% 100))]
 
   # Append X-13 / STL deseasonalized columns: value_x13, value_stl. Per
-  # (measure × breakdown_type × breakdown_value) group.
+  # (income_var × measure × breakdown_type × breakdown_value) group.
   if (!is.null(utils_deseasonalize_path)) {
     deseasonalize_long_table(
       data = q_inc,
       time_col = "ref_month_yyyymm",
-      group_cols = c("measure", "breakdown_type", "breakdown_value"),
+      group_cols = c("income_var", "measure",
+                     "breakdown_type", "breakdown_value"),
       value_cols = "value",
       methods = c("x13", "stl"),
       utils_deseasonalize_path = utils_deseasonalize_path
@@ -402,18 +434,36 @@ build_inequality_outputs <- function(prepared_microdata_path,
   # (compute_breakdowns, compute_shares, compute_lorenz, compute_gini_decomp)
   # below replace ~6,500 nested-loop iterations with ~1 grouped pass each.
 
-  # A. Time series
-  ineq <- compute_breakdowns(d, breakdown_specs, measures_fn)
+  # Phase 2-2: 4 household income variants (column "income_var" tags
+  # which variable produced each row). Same set of measures applied to
+  # each, then rbinded into a single long-format table.
+  hh_income_vars <- list(
+    list(code = "hh_total_efe", col = "hhinc_total_efe"),
+    list(code = "hh_pc_efe",    col = "hhinc_pc_efe"),
+    list(code = "hh_total_hab", col = "hhinc_total_hab"),
+    list(code = "hh_pc_hab",    col = "hhinc_pc_hab")
+  )
+
+  ineq_parts <- lapply(hh_income_vars, function(iv) {
+    one <- compute_breakdowns(d, breakdown_specs, measures_fn,
+                              income_col = iv$col)
+    if (!nrow(one)) return(NULL)
+    one[, income_var := iv$code]
+    one
+  })
+  ineq <- data.table::rbindlist(ineq_parts, use.names = TRUE, fill = TRUE)
   ineq[, period := as.Date(sprintf("%d-%02d-15",
                                    ref_month_yyyymm %/% 100,
                                    ref_month_yyyymm %% 100))]
   # Append X-13 / STL deseasonalized columns: value_x13, value_stl. Per
-  # (measure, breakdown_type, breakdown_value) group; groups too short for
-  # X-11 / STL fall back to the original values inside the helpers.
+  # (income_var, measure, breakdown_type, breakdown_value) group; groups
+  # too short for X-11 / STL fall back to the original values inside the
+  # helpers.
   deseasonalize_long_table(
     data = ineq,
     time_col = "ref_month_yyyymm",
-    group_cols = c("measure", "breakdown_type", "breakdown_value"),
+    group_cols = c("income_var", "measure",
+                   "breakdown_type", "breakdown_value"),
     value_cols = "value",
     methods = c("x13", "stl"),
     utils_deseasonalize_path = utils_deseasonalize_path
@@ -421,27 +471,86 @@ build_inequality_outputs <- function(prepared_microdata_path,
   inequality_path <- file.path(dest_dir, "inequality_data.rds")
   saveRDS_atomic(ineq, inequality_path)
 
-  # B. Income shares (skip uf — too many)
+  # B. Income shares (skip uf — too many). Phase 2-2: 4 hh income variants.
   shares_specs <- breakdown_specs[vapply(breakdown_specs, function(s) s$type != "uf", logical(1L))]
-  shares <- compute_shares(d, shares_specs)
+  shares_parts <- lapply(hh_income_vars, function(iv) {
+    one <- compute_shares(d, shares_specs, income_col = iv$col)
+    if (!nrow(one)) return(NULL)
+    one[, income_var := iv$code]
+    one
+  })
+  shares <- data.table::rbindlist(shares_parts, use.names = TRUE, fill = TRUE)
   shares[, period := as.Date(sprintf("%d-%02d-15",
                                      ref_month_yyyymm %/% 100,
                                      ref_month_yyyymm %% 100))]
   shares_path <- file.path(dest_dir, "income_shares_data.rds")
   saveRDS_atomic(shares, shares_path)
 
-  # C. Lorenz (overall + race + region)
+  # C. Lorenz (overall + race + region) × 4 hh income variants
   lorenz_specs <- list(
     list(type = "overall", col = NULL),
     list(type = "race",    col = "raca"),
     list(type = "region",  col = "regiao")
   )
-  lorenz <- compute_lorenz(d, lorenz_specs)
+  lorenz_parts <- lapply(hh_income_vars, function(iv) {
+    one <- compute_lorenz(d, lorenz_specs, income_col = iv$col)
+    if (!nrow(one)) return(NULL)
+    one[, income_var := iv$code]
+    one
+  })
+  lorenz <- data.table::rbindlist(lorenz_parts, use.names = TRUE, fill = TRUE)
   lorenz_path <- file.path(dest_dir, "lorenz_data.rds")
   saveRDS_atomic(lorenz, lorenz_path)
 
-  # D. Gini decomposition (overall, monthly)
-  decomp <- compute_gini_decomp(d, income_vars, income_source_labels)
+  # D. Gini decomposition. Phase 2-2: 2 underlying decompositions —
+  # "habitual" (renda do trabalho habitual + 7 não-trabalho efetivas) and
+  # "efetiva" (trabalho efetivo + 7 não-trabalho efetivas). The dashboard
+  # surfaces these as the decomposition for the 4 hh income variants
+  # (per-capita and total share the same decomposition since gini
+  # decomposition is scale-invariant).
+  decomp_specs <- list(
+    habitual = list(
+      total_var   = "hhinc_pc_hab",
+      income_vars = c("rendaTrab_ha_pc",
+                      "rendaPrevid_pc", "rendaBPC_pc", "rendaBolsaFam_pc",
+                      "rendaOutProgs_pc", "rendaSegDesemp_pc",
+                      "rendaAlugueis_pc", "rendaOutros_pc"),
+      labels      = data.table::data.table(
+        var = c("rendaTrab_ha_pc",
+                "rendaPrevid_pc", "rendaBPC_pc", "rendaBolsaFam_pc",
+                "rendaOutProgs_pc", "rendaSegDesemp_pc",
+                "rendaAlugueis_pc", "rendaOutros_pc"),
+        source_id = c("labor", "pension", "bpc", "bolsa_familia",
+                      "other_programs", "unemployment_insurance",
+                      "rental", "other")
+      )
+    ),
+    efetiva = list(
+      total_var   = "hhinc_pc_efe",
+      income_vars = c("rendaTrab_ef_pc",
+                      "rendaPrevid_pc", "rendaBPC_pc", "rendaBolsaFam_pc",
+                      "rendaOutProgs_pc", "rendaSegDesemp_pc",
+                      "rendaAlugueis_pc", "rendaOutros_pc"),
+      labels      = data.table::data.table(
+        var = c("rendaTrab_ef_pc",
+                "rendaPrevid_pc", "rendaBPC_pc", "rendaBolsaFam_pc",
+                "rendaOutProgs_pc", "rendaSegDesemp_pc",
+                "rendaAlugueis_pc", "rendaOutros_pc"),
+        source_id = c("labor", "pension", "bpc", "bolsa_familia",
+                      "other_programs", "unemployment_insurance",
+                      "rental", "other")
+      )
+    )
+  )
+  decomp_parts <- lapply(names(decomp_specs), function(kind) {
+    spec <- decomp_specs[[kind]]
+    one <- compute_gini_decomp(d, spec$income_vars, spec$labels,
+                               total_var = spec$total_var)
+    if (!nrow(one)) return(NULL)
+    one[, decomp_kind := kind]
+    one
+  })
+  decomp <- data.table::rbindlist(decomp_parts, use.names = TRUE, fill = TRUE)
   decomp[, period := as.Date(sprintf("%d-%02d-15",
                                      ref_month_yyyymm %/% 100,
                                      ref_month_yyyymm %% 100))]
@@ -466,12 +575,13 @@ build_inequality_outputs <- function(prepared_microdata_path,
 # rbinded. Same numeric output (modulo floating-point summation order) as the
 # legacy nested-loop version.
 
-compute_breakdowns <- function(d, specs, measure_fn) {
+compute_breakdowns <- function(d, specs, measure_fn,
+                               income_col = "hhinc_pc") {
   parts <- lapply(specs, function(sp) {
     if (sp$type == "overall") {
       res <- d[, {
         if (.N < 30L) NULL else {
-          meas <- measure_fn(hhinc_pc, weight_monthly)
+          meas <- measure_fn(get(income_col), weight_monthly)
           list(measure = names(meas), value = unlist(meas, use.names = FALSE),
                n_obs = .N)
         }
@@ -483,7 +593,7 @@ compute_breakdowns <- function(d, specs, measure_fn) {
       bcol <- sp$col
       res <- d[!is.na(get(bcol)), {
         if (.N < 30L) NULL else {
-          meas <- measure_fn(hhinc_pc, weight_monthly)
+          meas <- measure_fn(get(income_col), weight_monthly)
           list(measure = names(meas), value = unlist(meas, use.names = FALSE),
                n_obs = .N)
         }
@@ -498,7 +608,7 @@ compute_breakdowns <- function(d, specs, measure_fn) {
   data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
 }
 
-compute_shares <- function(d, specs) {
+compute_shares <- function(d, specs, income_col = "hhinc_pc") {
   parts <- list()
   for (n_groups in c(5L, 10L)) {
     type_label <- if (n_groups == 5L) "quintile" else "decile"
@@ -506,7 +616,8 @@ compute_shares <- function(d, specs) {
       if (sp$type == "overall") {
         res <- d[, {
           if (.N < 50L) NULL else {
-            sh <- income_shares(hhinc_pc, weight_monthly, groups = n_groups)
+            sh <- income_shares(get(income_col), weight_monthly,
+                                groups = n_groups)
             list(group_label = sh$group_label, share = sh$share)
           }
         }, by = .(ref_month_yyyymm)]
@@ -519,7 +630,8 @@ compute_shares <- function(d, specs) {
         bcol <- sp$col
         res <- d[!is.na(get(bcol)), {
           if (.N < 50L) NULL else {
-            sh <- income_shares(hhinc_pc, weight_monthly, groups = n_groups)
+            sh <- income_shares(get(income_col), weight_monthly,
+                                groups = n_groups)
             list(group_label = sh$group_label, share = sh$share)
           }
         }, by = c("ref_month_yyyymm", bcol)]
@@ -535,11 +647,12 @@ compute_shares <- function(d, specs) {
   data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
 }
 
-compute_lorenz <- function(d, specs) {
+compute_lorenz <- function(d, specs, income_col = "hhinc_pc") {
   parts <- lapply(specs, function(sp) {
     if (sp$type == "overall") {
       res <- d[, {
-        if (.N < 50L) NULL else lorenz_points(hhinc_pc, weight_monthly, n = 100L)
+        if (.N < 50L) NULL else lorenz_points(get(income_col), weight_monthly,
+                                              n = 100L)
       }, by = .(ref_month_yyyymm)]
       if (!nrow(res)) return(NULL)
       res[, `:=`(breakdown_type = "overall", breakdown_value = "Nacional")]
@@ -547,7 +660,8 @@ compute_lorenz <- function(d, specs) {
     } else {
       bcol <- sp$col
       res <- d[!is.na(get(bcol)), {
-        if (.N < 50L) NULL else lorenz_points(hhinc_pc, weight_monthly, n = 100L)
+        if (.N < 50L) NULL else lorenz_points(get(income_col), weight_monthly,
+                                              n = 100L)
       }, by = c("ref_month_yyyymm", bcol)]
       if (!nrow(res)) return(NULL)
       data.table::setnames(res, bcol, "breakdown_value")
@@ -559,13 +673,14 @@ compute_lorenz <- function(d, specs) {
   data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
 }
 
-compute_gini_decomp <- function(d, income_vars, labels_dt) {
+compute_gini_decomp <- function(d, income_vars, labels_dt,
+                                total_var = "hhinc_pc") {
   res <- d[, {
     if (.N < 100L) NULL else {
       decomp <- gini_decomposition(
         dt = .SD,
         income_vars = income_vars,
-        total_var = "hhinc_pc",
+        total_var = total_var,
         weight_var = "weight_monthly"
       )
       list(income_source = decomp$income_source,

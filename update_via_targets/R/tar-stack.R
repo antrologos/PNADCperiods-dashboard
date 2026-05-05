@@ -100,7 +100,10 @@ load_annual_with_income_harmonization <- function(paths) {
             "v2005", "v2007", "v2009", "v2010", "vd3004", "v1022",
             "uf", "estrato",
             "v1032", "posest", "posest_sxi",
-            "vd5008", "vd4019", "vd4020")
+            # Household income composites (Phase 2: 4 variants)
+            "vd5001", "vd5002", "vd5007", "vd5008",
+            # Individual labor income (used in decomposition)
+            "vd4019", "vd4020")
 
   Sum <- function(...) {
     X <- cbind(...)
