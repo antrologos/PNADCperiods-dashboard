@@ -49,54 +49,56 @@ build_prepared_microdata <- function(annual_recoded, dest_path) {
 # helper implementing stack_annual().
 
 # ------------------------------------------------------------------------------
-# Deflation step (CO2 + INPC to target date)
+# Deflation step (Phase 2: IPCA-based, replaces the IBGE per-UF deflator)
 # ------------------------------------------------------------------------------
 
-#' @param deflator_dt data.table from `read_deflator_xls` (in `tar-network.R`),
-#'   pre-parsed once per tar_make in the `deflator_dt` target. Columns
-#'   (Ano, Trimestre, UF, CO2, CO2e, CO3) all numeric.
-#' @param inpc_factor numeric scalar — INPC factor for mid-2024 → real_date.
-#'   Pre-computed by `compute_inpc_factors` (in `tar-network.R`) to avoid
-#'   re-hitting the IPEA API inside this builder.
-deflate_incomes <- function(d, deflator_dt, inpc_factor) {
-  if (!is.numeric(inpc_factor) || length(inpc_factor) != 1L || !is.finite(inpc_factor))
-    stop("inpc_factor must be a single finite numeric (got: ",
-         paste(class(inpc_factor), collapse = "/"), ")", call. = FALSE)
-  deflator <- data.table::copy(deflator_dt)  # avoid mutating shared target
+#' Coerce nominal income variables to numeric and apply IPCA-based deflation.
+#'
+#' Replaces the previous (CO1/CO2/CO3 + inpc_factor) logic with a single
+#' national IPCA index. Two flavours of deflator are applied:
+#'
+#'   - "habitual" (numerator IPCA[T_ref], denominator IPCA[m_obs]) for
+#'     habitual labor income (VD4019) and the household composites whose
+#'     dominant component is habitual labor (VD5007/VD5008).
+#'   - "efetivo"  (denominator IPCA[m_obs - 1]) for effective labor income
+#'     (VD4020) and the household composites with effective labor
+#'     (VD5001/VD5002), plus all 7 non-labor sources (V500*A2 — IBGE
+#'     classifies non-labor income as effective recall).
+#'
+#' T_ref is the most recent month present in `d$ref_month_yyyymm` and is
+#' the same scalar for every row in a given tar_make() run. Stored as
+#' attributes "T_ref_habitual" and "T_ref_efetivo" on the returned data.table
+#' so downstream code (microdata_log writer) can record it.
+#'
+#' @param d data.table after pnadc_apply_periods (has ref_month_yyyymm).
+#' @param ipca_table data.table from `ipca_index_table` target.
+#' @return d, modified by reference, with:
+#'   - hhinc_pc_nominal, hhinc_pc (RDPC habitual = VD5008 deflated)
+#'   - vd4019_num, vd4020_num, v500*a2_num (numeric, NA -> 0 for full module)
+#'   - inpc_factor (scalar, kept as a marker for downstream consumers; equal
+#'     to deflator_habitual at T_ref)
+deflate_incomes <- function(d, ipca_table) {
+  if (!is.data.frame(d))
+    stop("deflate_incomes: d must be a data.table", call. = FALSE)
+  if (!data.table::is.data.table(d)) data.table::setDT(d)
   d[, UF := as.numeric(UF)]
 
-  # Refuse to silently propagate NA when the deflator XLS doesn't cover the
-  # microdata's full (Ano, Trimestre, UF) range. IBGE updates the deflator
-  # yearly and the merge keys on (Ano, Trimestre, UF) — partial UF coverage
-  # for a quarter would also leak NA into hhinc_pc.
-  d_keys <- unique(d[, .(Ano, Trimestre, UF)])
-  defl_keys <- unique(deflator[, .(Ano, Trimestre, UF)])
-  uncovered <- d_keys[!defl_keys, on = .(Ano, Trimestre, UF)]
-  if (nrow(uncovered)) {
-    sample <- utils::head(uncovered, 10L)
-    stop(sprintf(
-      "Deflator does not cover %d microdata key(s) on (Ano, Trimestre, UF). First %d: %s. Update the deflator XLS via tar_invalidate(\"deflator_download\") + tar_make().",
-      nrow(uncovered),
-      nrow(sample),
-      paste(sprintf("%d-Q%d-UF%02d",
-                    sample$Ano, sample$Trimestre, sample$UF),
-            collapse = ", ")
-    ), call. = FALSE)
-  }
-
-  data.table::setkeyv(deflator, c("Ano", "Trimestre", "UF"))
-  data.table::setkeyv(d, c("Ano", "Trimestre", "UF"))
-  d <- deflator[d]
-
   # Backwards compatibility: callers that pre-date the simplified-module
-  # detector (legacy unit tests, ad-hoc scripts) won't have the flag. Treat
-  # absence as "full module" so they keep the legacy NA -> 0 behaviour.
+  # detector won't have the flag. Treat absence as "full module".
   if (!"income_module_complete" %in% names(d)) {
     d[, income_module_complete := TRUE]
   }
 
-  message(sprintf("INPC adjustment factor (mid-2024 -> %s): %.4f",
-                  deflation_target_date, inpc_factor))
+  # Compute the two deflator vectors once, reuse for every nominal column.
+  res_hab <- deflate_ipca(d$ref_month_yyyymm, ipca_table, kind = "habitual")
+  res_efe <- deflate_ipca(d$ref_month_yyyymm, ipca_table, kind = "efetivo")
+  d[, ipca_deflator_hab := res_hab$deflator]
+  d[, ipca_deflator_efe := res_efe$deflator]
+  data.table::setattr(d, "T_ref_habitual", res_hab$T_ref)
+  data.table::setattr(d, "T_ref_efetivo",  res_efe$T_ref)
+
+  message(sprintf("IPCA deflation: T_ref habitual=%d, efetivo=%d",
+                  res_hab$T_ref, res_efe$T_ref))
 
   # Years with the full income module: keep legacy behaviour (NA -> 0).
   # Years flagged as simplified (e.g. PNADC anual 2025 visita 1) lack
@@ -106,7 +108,8 @@ deflate_incomes <- function(d, deflator_dt, inpc_factor) {
     hhinc_pc_nominal := data.table::fifelse(is.na(vd5008), 0, as.numeric(vd5008))]
   d[income_module_complete == FALSE,
     hhinc_pc_nominal := NA_real_]
-  d[, hhinc_pc := hhinc_pc_nominal * CO2 * inpc_factor]
+  # VD5008 = RDPC habitual → habitual deflator
+  d[, hhinc_pc := hhinc_pc_nominal * ipca_deflator_hab]
   d[, vd4019_num := data.table::fifelse(is.na(vd4019), 0, as.numeric(vd4019))]
   d[, vd4020_num := data.table::fifelse(is.na(vd4020), 0, as.numeric(vd4020))]
   for (v in c("v5001a2", "v5002a2", "v5003a2", "v5004a2",
@@ -116,7 +119,6 @@ deflate_incomes <- function(d, deflator_dt, inpc_factor) {
       d[, (nv) := data.table::fifelse(is.na(get(v)), 0, as.numeric(get(v)))]
     }
   }
-  d[, inpc_factor := inpc_factor]
   d
 }
 
@@ -130,8 +132,15 @@ build_pc_income_components <- function(d) {
   # (`hh[, n_members := .N, ...]`) and broadcast back via merge. No
   # individual-level `n_members` column is needed at this point.
 
-  d[, renda_trab_ha := vd4019_num * CO2 * inpc_factor]
-  d[, renda_trab_ef := vd4020_num * CO2 * inpc_factor]
+  # Phase 2 deflation:
+  #   - habitual labor income (VD4019) → habitual deflator
+  #   - effective labor income (VD4020) → efetivo deflator (denominator
+  #     IPCA[m_obs - 1])
+  #   - 7 non-labor sources (V500*A2) → efetivo deflator (IBGE classifies
+  #     non-labor income as effective recall — recipient reports the
+  #     amount received in the previous month)
+  d[, renda_trab_ha := vd4019_num * ipca_deflator_hab]
+  d[, renda_trab_ef := vd4020_num * ipca_deflator_efe]
 
   src_to_col <- list(
     renda_bpc        = "v5001a2_num",
@@ -146,7 +155,7 @@ build_pc_income_components <- function(d) {
   for (out in names(src_to_col)) {
     src <- src_to_col[[out]]
     if (src %in% names(d)) {
-      d[, (out) := get(src) * CO2e * inpc_factor]
+      d[, (out) := get(src) * ipca_deflator_efe]
     } else {
       d[, (out) := 0]
     }

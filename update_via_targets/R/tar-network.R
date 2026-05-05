@@ -94,6 +94,55 @@ read_deflator_xls <- function(deflator_path) {
 }
 
 # ------------------------------------------------------------------------------
+# IPCA index series (Phase 2: replaces the IBGE deflator XLS files)
+# ------------------------------------------------------------------------------
+
+#' Fetch IPCA monthly index from SIDRA (table 1737, variable 2266: base
+#' dez/1993 = 100). Used by the Phase 2 IPCA-based deflation that
+#' replaces the IBGE per-UF deflator (CO1/CO2/CO3) and the per-quarter
+#' habitual/efetivo deflators.
+#'
+#' @return data.table(yyyymm integer, ipca_index numeric), one row per
+#'   month from 199401 (Jan 1994) onward. The index is national (no UF
+#'   variation) — same value applied to every observation in the
+#'   downstream deflation step.
+fetch_ipca_series <- function(max_retries = 3) {
+  api_path <- "/t/1737/n1/all/v/2266/p/all/d/v2266%2013"
+  attempt <- 1L
+  raw <- NULL
+  while (attempt <= max_retries) {
+    raw <- tryCatch(
+      sidrar::get_sidra(api = api_path),
+      error = function(e) {
+        message(sprintf("fetch_ipca_series: attempt %d failed: %s",
+                        attempt, conditionMessage(e)))
+        NULL
+      }
+    )
+    if (!is.null(raw)) break
+    attempt <- attempt + 1L
+    Sys.sleep(2)
+  }
+  if (is.null(raw)) {
+    stop("fetch_ipca_series: SIDRA fetch failed after ",
+         max_retries, " attempts.", call. = FALSE)
+  }
+
+  data.table::setDT(raw)
+  # SIDRA returns "Mês (Código)" with values like "199401" (string).
+  mes_col <- grep("^M.s.*C.digo", names(raw), value = TRUE)
+  if (!length(mes_col))
+    stop("fetch_ipca_series: 'Mês (Código)' column not found", call. = FALSE)
+  out <- data.table::data.table(
+    yyyymm = as.integer(raw[[mes_col[1L]]]),
+    ipca_index = as.numeric(raw[["Valor"]])
+  )
+  out <- out[!is.na(yyyymm) & !is.na(ipca_index)]
+  data.table::setkey(out, yyyymm)
+  out
+}
+
+# ------------------------------------------------------------------------------
 # Brazil states geometries (geobr hoisted from L3)
 # ------------------------------------------------------------------------------
 

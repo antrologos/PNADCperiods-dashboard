@@ -24,7 +24,7 @@
 #' @return data.table with all derived labor flags + ref_month_yyyymm +
 #'   weight_monthly, filtered to V2009>=14 and non-NA UF/weight.
 recode_quarterly <- function(quarterly_stacked, crosswalk,
-                             deflator_dt = NULL, inpc_factor = NULL,
+                             ipca_table = NULL,
                              labels_path = NULL) {
   pnadc <- data.table::copy(quarterly_stacked)
 
@@ -117,36 +117,40 @@ recode_quarterly <- function(quarterly_stacked, crosswalk,
   )
   pnadc <- pnadc[!is.na(weight_monthly) & !is.na(UF) & V2009 >= 14]
 
-  # ---- Individual labor income (deflated) + demographic groupings ----
-  # When deflator_dt + inpc_factor + labels_path are supplied, attach
-  # 4 deflated labor-income columns (renda_hab_princ, renda_efe_princ,
-  # renda_hab_todos, renda_efe_todos) and the demographic grouping
-  # columns (sexo, raca, faixa_educ, regiao, uf_abbrev, urbano,
-  # faixa_idade) so quarterly_income_aggregates can roll them up by
-  # (month × breakdown_type × breakdown_value). Keeping these args
-  # optional preserves callers (state_monthly_asset) that don't need
-  # the income columns.
-  inc_vars <- c("VD4016", "VD4017", "VD4019", "VD4020")
-  inc_out  <- c("renda_hab_princ", "renda_efe_princ",
-                "renda_hab_todos", "renda_efe_todos")
+  # ---- Individual labor income (Phase 2 IPCA deflation) + demographics ----
+  # When ipca_table + labels_path are supplied, attach the 4 deflated
+  # labor-income columns and demographic groupings. The income columns
+  # follow the IBGE habitual/efetivo recall convention:
+  #   - VD4016 (habitual principal),  VD4019 (habitual todos)  → habitual
+  #   - VD4017 (efetivo principal),   VD4020 (efetivo todos)   → efetivo
+  inc_vars     <- c("VD4016", "VD4017", "VD4019", "VD4020")
+  inc_out      <- c("renda_hab_princ", "renda_efe_princ",
+                    "renda_hab_todos", "renda_efe_todos")
+  inc_kind     <- c("habitual", "efetivo", "habitual", "efetivo")
   has_income_vars <- all(inc_vars %in% names(pnadc))
 
-  if (!is.null(deflator_dt) && is.numeric(inpc_factor) && has_income_vars) {
+  if (!is.null(ipca_table) && has_income_vars) {
     pnadc[, UF := as.numeric(UF)]
-    deflator <- data.table::copy(deflator_dt)
-    data.table::setkeyv(deflator, c("Ano", "Trimestre", "UF"))
-    data.table::setkeyv(pnadc,    c("Ano", "Trimestre", "UF"))
-    pnadc <- deflator[pnadc]
+    res_hab <- deflate_ipca(pnadc$ref_month_yyyymm, ipca_table,
+                             kind = "habitual")
+    res_efe <- deflate_ipca(pnadc$ref_month_yyyymm, ipca_table,
+                             kind = "efetivo")
+    pnadc[, ipca_deflator_hab := res_hab$deflator]
+    pnadc[, ipca_deflator_efe := res_efe$deflator]
+    data.table::setattr(pnadc, "T_ref_habitual", res_hab$T_ref)
+    data.table::setattr(pnadc, "T_ref_efetivo",  res_efe$T_ref)
+
     for (i in seq_along(inc_vars)) {
-      v   <- inc_vars[i]
-      out <- inc_out[i]
+      v       <- inc_vars[i]
+      out     <- inc_out[i]
+      defl_col <- if (inc_kind[i] == "habitual") "ipca_deflator_hab"
+                  else                            "ipca_deflator_efe"
       pnadc[, (out) := data.table::fifelse(
         is.na(get(v)),
         NA_real_,
-        get(v) * CO2 * inpc_factor
+        as.numeric(get(v)) * get(defl_col)
       )]
     }
-    pnadc[, inpc_factor := inpc_factor]
   } else {
     for (out in inc_out) pnadc[, (out) := NA_real_]
   }
@@ -191,8 +195,8 @@ recode_quarterly <- function(quarterly_stacked, crosswalk,
 #' @param labels_path path to R/labels.R
 #' @return data.table with all derived income/demographic columns; rows with
 #'   NA `ref_month_yyyymm` retained (filter happens in the thin writer).
-recode_annual <- function(annual_stacked, crosswalk, deflator_dt,
-                          inpc_factor, labels_path) {
+recode_annual <- function(annual_stacked, crosswalk, ipca_table,
+                          labels_path) {
   source(labels_path)  # into globalenv: build_demographic_groupings needs labels
 
   det_rate <- crosswalk[, mean(determined_month, na.rm = TRUE)]
@@ -224,8 +228,8 @@ recode_annual <- function(annual_stacked, crosswalk, deflator_dt,
   # parente do empregado domestico). Matches IBGE VD2003 / VD3003.
   d <- d[!v2005 %in% c(17L, 18L, 19L)]
 
-  # Deflate (deflator_dt + inpc_factor pre-computed in L1; no I/O here)
-  d <- deflate_incomes(d, deflator_dt, inpc_factor)
+  # Phase 2: IPCA-based deflation (replaces IBGE deflator XLS + INPC factor)
+  d <- deflate_incomes(d, ipca_table)
   d <- build_pc_income_components(d)
   d <- build_demographic_groupings(d)
   d

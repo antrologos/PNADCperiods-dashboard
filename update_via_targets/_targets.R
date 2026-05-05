@@ -189,6 +189,17 @@ list(
     compute_inpc_factors(deflation_target_date)
   ),
 
+  # Phase 2: IPCA monthly index from SIDRA (table 1737, var 2266 base
+  # dez/1993). Replaces the per-UF IBGE deflator XLS (CO1/CO2/CO3) for
+  # all income deflation; one national series for every (Ano,
+  # Trimestre, UF) row. Each tar_make() refetches via SIDRA — the
+  # series gets new tail months as IBGE publishes them.
+  tar_target(
+    ipca_index_table,
+    fetch_ipca_series(),
+    cue = tar_cue(mode = "always")
+  ),
+
   # NOTE: sidra_geographic_raw + geographic_fallback_asset removed (this
   # session). The 3 SIDRA URLs hardcoded in fetch_sidra_geographic never
   # worked completely (2 of 3 always returned HTTP 400 — wrong tab/var
@@ -414,8 +425,7 @@ list(
     quarterly_recoded,
     recode_quarterly(
       quarterly_stacked, crosswalk_target,
-      deflator_dt = deflator_dt,
-      inpc_factor = inpc_factor_at(inpc_factor_table, as.Date("2024-07-01")),
+      ipca_table  = ipca_index_table,
       labels_path = labels_path
     )
   ),
@@ -442,10 +452,9 @@ list(
     annual_recoded,
     recode_annual(
       annual_stacked = annual_stacked,
-      crosswalk = crosswalk_target,
-      deflator_dt = deflator_dt,
-      inpc_factor = inpc_factor_at(inpc_factor_table, as.Date("2024-07-01")),
-      labels_path = labels_path
+      crosswalk      = crosswalk_target,
+      ipca_table     = ipca_index_table,
+      labels_path    = labels_path
     )
   ),
 
