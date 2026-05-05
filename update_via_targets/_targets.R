@@ -503,9 +503,9 @@ list(
       force(t0_backup_targets)
       build_poverty_outputs(
         prepared_microdata_path = prepared_microdata_fst,
-        inpc_factor_table = inpc_factor_table,
-        dest_dir = dashboard_data_dest,
-        measures_poverty_path = measures_poverty_path,
+        ipca_table              = ipca_index_table,
+        dest_dir                = dashboard_data_dest,
+        measures_poverty_path   = measures_poverty_path,
         utils_deseasonalize_path = utils_deseasonalize_path
       )
     },

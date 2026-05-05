@@ -701,75 +701,64 @@ compute_gini_decomp <- function(d, income_vars, labels_dt,
 # Layer 3 — poverty outputs (1 .rds)
 # ------------------------------------------------------------------------------
 
-#' @param inpc_factor_table data.table(nominal_date, factor) — pre-computed
-#'   in `compute_inpc_factors` (in `tar-network.R`). Replaces the 3 internal
-#'   `deflateBR::inpc` calls (WB lines @ 2021-07, MW quarter/half @ year-mid).
+#' Phase 2-5: replaced the IBGE-XLS-based deflation (CO1/CO2/CO3 + INPC
+#' factor at 2021-07-01) with the new IPCA-based formula. World Bank
+#' lines are deflated as:
+#'
+#'    Linha_R$[T] = (USD/day × 365.25/12 × 2.45_PPP) ×
+#'                  (IPCA[T] / mean(IPCA[2021-01..2021-12]))
+#'
+#' where T = max(ref_month_yyyymm) of the income_var being measured (in
+#' practice the annual stack T_ref). 2021 is the WB private-consumption
+#' PPP reference year — not a moving target. Minimum-wage lines
+#' (br_quarter_mw, br_half_mw) are dropped — the dashboard no longer
+#' shows them. FGT is computed twice per row, once over hhinc_pc_hab
+#' (RDPC habitual) and once over hhinc_pc_efe (RDPC efetiva), tagged
+#' with `income_var ∈ {hh_pc_hab, hh_pc_efe}`.
 build_poverty_outputs <- function(prepared_microdata_path,
-                                  inpc_factor_table,
+                                  ipca_table,
                                   dest_dir,
                                   measures_poverty_path,
                                   utils_deseasonalize_path = NULL) {
-  # Source into globalenv (default): protects against future refactors that
-  # move the j-expression callers into globalenv helpers (same lesson as
-  # Plan 5 fix for build_prepared_microdata).
   source(measures_poverty_path)
   d <- fst::read_fst(prepared_microdata_path, as.data.table = TRUE)
-  # Same simplified-module filter as build_inequality_outputs: drop years
-  # where hhinc_pc is NA by design (e.g. PNADC anual 2025 visita 1)
-  # to avoid emitting fgt0 = 1.0 (everyone below line) / NA poverty rates.
   d <- d[income_module_complete == TRUE]
 
-  # WB poverty lines: deflate from 2021-07 PPP-anchored values.
-  # Replaces `get_wb_poverty_lines(reference_date = ...)` to avoid a
-  # network call inside this builder.
+  # ---- Phase 2-5: WB poverty lines, IPCA-deflated ----
+  if (!data.table::is.data.table(ipca_table))
+    ipca_table <- data.table::as.data.table(ipca_table)
+  ipca_2021 <- ipca_table[yyyymm >= 202101 & yyyymm <= 202112, ipca_index]
+  if (length(ipca_2021) != 12L) {
+    stop(sprintf(
+      "build_poverty_outputs: expected 12 IPCA values for 2021, got %d",
+      length(ipca_2021)), call. = FALSE)
+  }
+  ipca_2021_avg <- mean(ipca_2021)
+  T_ref <- as.integer(max(d$ref_month_yyyymm, na.rm = TRUE))
+  ipca_T_hits <- ipca_table[yyyymm == T_ref, ipca_index]
+  if (!length(ipca_T_hits)) {
+    stop(sprintf("build_poverty_outputs: IPCA[T_ref=%d] not in table",
+                 T_ref), call. = FALSE)
+  }
+  line_deflator <- ipca_T_hits[1L] / ipca_2021_avg
+
   ppp_factor <- 2.45
-  days_to_month <- 365 / 12
-  factor_2021 <- inpc_factor_at(inpc_factor_table, as.Date("2021-07-01"))
+  days_to_month <- 365.25 / 12
   wb_lines <- data.table::data.table(
-    line_id = c("wb_300", "wb_420", "wb_830"),
-    label_en = c("Extreme Poverty ($3.00/day)",
-                 "Lower-Middle ($4.20/day)",
-                 "Upper-Middle ($8.30/day)"),
-    label_pt = c("Pobreza Extrema ($3,00/dia)",
-                 "Renda Media-Baixa ($4,20/dia)",
-                 "Renda Media-Alta ($8,30/dia)"),
+    line_id     = c("wb_300", "wb_420", "wb_830"),
     usd_per_day = c(3.00, 4.20, 8.30)
   )
   wb_lines[, brl_monthly_2021 := usd_per_day * ppp_factor * days_to_month]
-  wb_lines[, brl_monthly_ref := brl_monthly_2021 * factor_2021]
-
-  # MW table: deflate per-year MW values via lookup (one merge, no API calls).
-  mw_table <- get_historical_minimum_wage()
-  mw_table[, mw_quarter := salario_minimo / 4]
-  mw_table[, mw_half := salario_minimo / 2]
-  mw_table[, nominal_date := as.Date(sprintf("%d-07-01", ano))]
-  mw_table <- merge(mw_table, inpc_factor_table,
-                    by = "nominal_date", all.x = TRUE)
-  if (any(is.na(mw_table$factor))) {
-    missing_yrs <- mw_table[is.na(factor), ano]
-    stop(sprintf("INPC factor missing for MW years: %s",
-                 paste(sort(unique(missing_yrs)), collapse = ", ")),
-         call. = FALSE)
-  }
-  mw_table[, mw_quarter_target := mw_quarter * factor]
-  mw_table[, mw_half_target := mw_half * factor]
+  wb_lines[, brl_monthly_ref  := brl_monthly_2021 * line_deflator]
 
   poverty_lines <- list()
   for (i in seq_len(nrow(wb_lines))) {
     poverty_lines[[wb_lines$line_id[i]]] <- list(
       line_id = wb_lines$line_id[i],
-      type = "fixed",
-      value = wb_lines$brl_monthly_ref[i]
+      type    = "fixed",
+      value   = wb_lines$brl_monthly_ref[i]
     )
   }
-  poverty_lines[["br_quarter_mw"]] <- list(
-    line_id = "br_quarter_mw", type = "by_year",
-    values = mw_table[, .(ano, value = mw_quarter_target)]
-  )
-  poverty_lines[["br_half_mw"]] <- list(
-    line_id = "br_half_mw", type = "by_year",
-    values = mw_table[, .(ano, value = mw_half_target)]
-  )
 
   breakdown_specs <- list(
     list(type = "overall",      col = NULL),
@@ -782,63 +771,57 @@ build_poverty_outputs <- function(prepared_microdata_path,
     list(type = "age_group",    col = "faixa_idade")
   )
 
-  # PR5 vectorization: 5 lines × 8 breakdowns = 40 grouped sweeps via
-  # data.table `by`, instead of ~10,500 nested-loop iterations. Same numeric
-  # output (modulo floating-point summation order) as the legacy nested loop.
-  out <- vector("list", length(poverty_lines) * length(breakdown_specs))
-  k <- 0L
-  for (line_name in names(poverty_lines)) {
-    pline <- poverty_lines[[line_name]]
+  # ---- Phase 2-5: 2 income_var (hh_pc_hab, hh_pc_efe) × 3 lines × 8 breakdowns
+  income_specs <- list(
+    list(code = "hh_pc_hab", col = "hhinc_pc_hab"),
+    list(code = "hh_pc_efe", col = "hhinc_pc_efe")
+  )
 
-    # Materialize per-row z column. For "fixed", z is constant; for "by_year",
-    # merge year-keyed value into d (rows for years not in the lookup are
-    # dropped — matches the legacy `next` behaviour).
-    if (pline$type == "fixed") {
+  out <- list()
+  k <- 0L
+  for (iv in income_specs) {
+    income_col <- iv$col
+    for (line_name in names(poverty_lines)) {
+      pline <- poverty_lines[[line_name]]
       d_z <- data.table::copy(d)
       d_z[, z := pline$value]
-    } else {
-      year_z <- pline$values[, .(Ano = as.numeric(ano), z = value)]
-      d_z <- merge(d, year_z, by = "Ano", all.x = FALSE)
-    }
-    if (!nrow(d_z)) next
-
-    for (sp in breakdown_specs) {
-      if (sp$type == "overall") {
-        res <- d_z[, {
-          fgt <- fgt_all(hhinc_pc, z, weight_monthly)
-          list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
-               n_poor = fgt$n_poor, total_pop = fgt$total_pop,
-               mean_income_poor = fgt$mean_income_poor,
-               poverty_line_value = z[1L], n_obs = .N)
-        }, by = .(ref_month_yyyymm)]
-        res[, breakdown_type := "overall"]
-        res[, breakdown_value := "Nacional"]
-      } else {
-        bcol <- sp$col
-        res <- d_z[!is.na(get(bcol)), {
-          fgt <- fgt_all(hhinc_pc, z, weight_monthly)
-          list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
-               n_poor = fgt$n_poor, total_pop = fgt$total_pop,
-               mean_income_poor = fgt$mean_income_poor,
-               poverty_line_value = z[1L], n_obs = .N)
-        }, by = c("ref_month_yyyymm", bcol)]
-        data.table::setnames(res, bcol, "breakdown_value")
-        res[, breakdown_type := sp$type]
-        res[, breakdown_value := as.character(breakdown_value)]
+      if (!nrow(d_z)) next
+      for (sp in breakdown_specs) {
+        if (sp$type == "overall") {
+          res <- d_z[, {
+            fgt <- fgt_all(get(income_col), z, weight_monthly)
+            list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
+                 n_poor = fgt$n_poor, total_pop = fgt$total_pop,
+                 mean_income_poor = fgt$mean_income_poor,
+                 poverty_line_value = z[1L], n_obs = .N)
+          }, by = .(ref_month_yyyymm)]
+          res[, breakdown_type := "overall"]
+          res[, breakdown_value := "Nacional"]
+        } else {
+          bcol <- sp$col
+          res <- d_z[!is.na(get(bcol)), {
+            fgt <- fgt_all(get(income_col), z, weight_monthly)
+            list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
+                 n_poor = fgt$n_poor, total_pop = fgt$total_pop,
+                 mean_income_poor = fgt$mean_income_poor,
+                 poverty_line_value = z[1L], n_obs = .N)
+          }, by = c("ref_month_yyyymm", bcol)]
+          data.table::setnames(res, bcol, "breakdown_value")
+          res[, breakdown_type := sp$type]
+          res[, breakdown_value := as.character(breakdown_value)]
+        }
+        res[, poverty_line_id := line_name]
+        res[, income_var      := iv$code]
+        res <- res[n_obs >= 10L]
+        k <- k + 1L
+        out[[k]] <- res
       }
-      res[, poverty_line_id := line_name]
-      res <- res[n_obs >= 10L]   # legacy filter
-      k <- k + 1L
-      out[[k]] <- res
     }
   }
-  out <- out[seq_len(k)]
   poverty_data <- data.table::rbindlist(out, use.names = TRUE, fill = TRUE)
-  # Match legacy column order so external consumers (Phase 5 equivalence)
-  # see a stable schema.
   data.table::setcolorder(poverty_data, c(
-    "ref_month_yyyymm", "poverty_line_id", "poverty_line_value",
-    "breakdown_type", "breakdown_value",
+    "income_var", "ref_month_yyyymm", "poverty_line_id",
+    "poverty_line_value", "breakdown_type", "breakdown_value",
     "fgt0", "fgt1", "fgt2",
     "n_poor", "total_pop", "mean_income_poor", "n_obs"
   ))
@@ -846,24 +829,30 @@ build_poverty_outputs <- function(prepared_microdata_path,
                                             ref_month_yyyymm %/% 100,
                                             ref_month_yyyymm %% 100))]
   data.table::setorder(poverty_data,
-                        poverty_line_id, breakdown_type, breakdown_value,
-                        ref_month_yyyymm)
+                       income_var, poverty_line_id,
+                       breakdown_type, breakdown_value,
+                       ref_month_yyyymm)
   poverty_data[, `:=`(
     fgt0_smooth = data.table::frollmean(fgt0, 3, align = "center"),
     fgt1_smooth = data.table::frollmean(fgt1, 3, align = "center"),
     fgt2_smooth = data.table::frollmean(fgt2, 3, align = "center")
-  ), by = .(poverty_line_id, breakdown_type, breakdown_value)]
+  ), by = .(income_var, poverty_line_id, breakdown_type, breakdown_value)]
 
-  # Append X-13 / STL deseasonalized columns for each FGT measure. Per
-  # (poverty_line_id, breakdown_type, breakdown_value) group.
+  # X-13 / STL deseasonalized columns for each FGT measure. Group by
+  # (income_var, poverty_line_id, breakdown_type, breakdown_value).
   deseasonalize_long_table(
     data = poverty_data,
     time_col = "ref_month_yyyymm",
-    group_cols = c("poverty_line_id", "breakdown_type", "breakdown_value"),
+    group_cols = c("income_var", "poverty_line_id",
+                   "breakdown_type", "breakdown_value"),
     value_cols = c("fgt0", "fgt1", "fgt2"),
     methods = c("x13", "stl"),
     utils_deseasonalize_path = utils_deseasonalize_path
   )
+
+  data.table::setattr(poverty_data, "T_ref_lines", T_ref)
+  data.table::setattr(poverty_data, "ipca_2021_avg", ipca_2021_avg)
+  data.table::setattr(poverty_data, "line_deflator", line_deflator)
 
   dest <- file.path(dest_dir, "poverty_data.rds")
   saveRDS_atomic(poverty_data, dest)
