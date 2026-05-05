@@ -29,7 +29,14 @@ build_prepared_microdata <- function(annual_recoded, dest_path) {
   keep_cols <- c(
     "Ano", "Trimestre", "UF", "ref_month_yyyymm", "ref_month_in_quarter",
     "ref_month_in_year", "weight_monthly",
-    "hhinc_pc", "rendaTrab_ha_pc", "rendaPrevid_pc", "rendaBPC_pc",
+    # Phase 2-2: 4 household income variants + alias hhinc_pc
+    "hhinc_pc",
+    "hhinc_total_efe", "hhinc_pc_efe",
+    "hhinc_total_hab", "hhinc_pc_hab",
+    # Per-capita components (rendaTrab_ef_pc added Phase 2-2 for the
+    # efetiva decomposition)
+    "rendaTrab_ha_pc", "rendaTrab_ef_pc",
+    "rendaPrevid_pc", "rendaBPC_pc",
     "rendaBolsaFam_pc", "rendaOutProgs_pc", "rendaSegDesemp_pc",
     "rendaAlugueis_pc", "rendaOutros_pc", "hhinc_pc_components",
     "income_module_complete",
