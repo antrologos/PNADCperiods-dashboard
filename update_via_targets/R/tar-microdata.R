@@ -420,7 +420,14 @@ build_inequality_outputs <- function(prepared_microdata_path,
                   "other_programs", "unemployment_insurance", "rental", "other")
   )
 
+  # Phase 2-3+2-4: rename mean_income/median_income → mean/median (uniform
+  # key names across the annual and quarterly income assets). Phase 2-4
+  # also adds 6 percentile measures: min (p≈0), p10, p25, p75, p90, max
+  # (p≈1). All use the same weighted_quantile helper so n_obs filters
+  # remain meaningful.
   measures_fn <- function(x, w) {
+    keep <- !is.na(x) & !is.na(w) & w > 0
+    x_k <- x[keep]; w_k <- w[keep]
     list(
       gini           = weighted_gini(x, w),
       palma          = palma_ratio(x, w),
@@ -431,9 +438,15 @@ build_inequality_outputs <- function(prepared_microdata_path,
       top5_share     = top_share(x, w, 5),
       top10_share    = top_share(x, w, 10),
       bottom50_share = bottom_share(x, w, 50),
-      mean_income    = if (sum(w, na.rm = TRUE) > 0)
+      mean           = if (sum(w, na.rm = TRUE) > 0)
         sum(x * w, na.rm = TRUE) / sum(w, na.rm = TRUE) else NA_real_,
-      median_income  = weighted_quantile(x, w, probs = 0.5)
+      min            = if (length(x_k) > 0) min(x_k)    else NA_real_,
+      p10            = weighted_quantile(x, w, probs = 0.1),
+      p25            = weighted_quantile(x, w, probs = 0.25),
+      median         = weighted_quantile(x, w, probs = 0.5),
+      p75            = weighted_quantile(x, w, probs = 0.75),
+      p90            = weighted_quantile(x, w, probs = 0.9),
+      max            = if (length(x_k) > 0) max(x_k)    else NA_real_
     )
   }
 

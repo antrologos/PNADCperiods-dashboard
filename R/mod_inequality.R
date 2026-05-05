@@ -35,10 +35,13 @@ inequalityUI <- function(id) {
         )
       ),
 
-      # Theme selector
+      # Income variable selector (top-level, Phase 2-3)
+      uiOutput(ns("income_var_selector")),
+
+      # Theme selector (analysis type — depends on income_var)
       uiOutput(ns("theme_selector")),
 
-      # Measure selector (dynamic based on theme)
+      # Measure selector (dynamic based on income_var × theme)
       uiOutput(ns("measure_selector")),
 
       # Breakdown selector
@@ -131,25 +134,38 @@ inequalityServer <- function(id, shared_data, lang) {
     ns <- session$ns
 
     # ====================================================================
+    # Phase 2-3: income_var taxonomy
+    # ====================================================================
+
+    # 4 hh income_vars come from the annual stack (inequality_data),
+    # 4 indiv income_vars come from the quarterly mensalized stack
+    # (quarterly_income_data). The two assets share the same long-format
+    # schema (ref_month_yyyymm, measure, value, n_obs, breakdown_type,
+    # breakdown_value, income_var, period [, value_x13, value_stl]) so
+    # the rest of the module reads them transparently.
+    HH_INCOME_VARS    <- c("hh_total_efe", "hh_pc_efe",
+                            "hh_total_hab", "hh_pc_hab")
+    INDIV_INCOME_VARS <- c("indiv_hab_princ", "indiv_efe_princ",
+                            "indiv_hab_todos", "indiv_efe_todos")
+    DEFAULT_INCOME_VAR <- "hh_pc_hab"
+
+    # Map income_var -> decomposition kind (for `theme = decomposition`).
+    # hh_*_efe -> efetiva ; hh_*_hab -> habitual. indiv_* has no decomp.
+    decomp_kind_for <- function(iv) {
+      if (is.null(iv)) return(NA_character_)
+      if (grepl("_efe$", iv)) return("efetiva")
+      if (grepl("_hab$", iv)) return("habitual")
+      NA_character_
+    }
+
+    # ====================================================================
     # Reactive: Available data
     # ====================================================================
 
-    # The 8 measure codes routed to the quarterly individual-income asset
-    # (computed from the mensalized quarterly stack, not the annual visits).
-    # All others fall back to inequality_data.rds.
-    QUARTERLY_INCOME_MEASURES <- c(
-      "mean_indiv_hab_princ", "median_indiv_hab_princ",
-      "mean_indiv_efe_princ", "median_indiv_efe_princ",
-      "mean_indiv_hab_todos", "median_indiv_hab_todos",
-      "mean_indiv_efe_todos", "median_indiv_efe_todos"
-    )
-
-    # Annual-only ineq data (renda domiciliar per capita-based measures)
     annual_ineq_data <- reactive({
       shared_data$get_inequality_data()
     })
 
-    # Quarterly individual labor-income data (when available)
     quarterly_income_data <- reactive({
       if (is.function(shared_data$get_quarterly_income_data)) {
         tryCatch(shared_data$get_quarterly_income_data(),
@@ -159,13 +175,12 @@ inequalityServer <- function(id, shared_data, lang) {
       }
     })
 
-    # Routing reactive: returns the data.table that holds the selected
-    # measure. The two tables share the same long-format schema
-    # (ref_month_yyyymm, measure, value, n_obs, breakdown_type,
-    #  breakdown_value, period [, value_x13, value_stl]).
+    # Routing reactive: returns the long-format data.table for the
+    # currently selected income_var. hh_* -> annual (inequality_data),
+    # indiv_* -> quarterly_income_data.
     ineq_data <- reactive({
-      m <- input$measure
-      if (!is.null(m) && m %in% QUARTERLY_INCOME_MEASURES) {
+      iv <- input$income_var %||% DEFAULT_INCOME_VAR
+      if (iv %in% INDIV_INCOME_VARS) {
         d <- quarterly_income_data()
         if (!is.null(d) && nrow(d) > 0) return(d)
       }
@@ -202,18 +217,62 @@ inequalityServer <- function(id, shared_data, lang) {
     })
 
     # ====================================================================
-    # Theme choices
+    # Income variable selector (Phase 2-3 — top-level)
+    # ====================================================================
+
+    income_var_choices <- reactive({
+      lang_val <- lang()
+      hh_label    <- i18n("inequality.income_var_group_hh", lang_val)
+      indiv_label <- i18n("inequality.income_var_group_indiv", lang_val)
+      hh_codes    <- HH_INCOME_VARS
+      indiv_codes <- INDIV_INCOME_VARS
+      hh_labels    <- vapply(hh_codes,
+        function(c) i18n(paste0("inequality.income_var_", c), lang_val),
+        character(1))
+      indiv_labels <- vapply(indiv_codes,
+        function(c) i18n(paste0("inequality.income_var_", c), lang_val),
+        character(1))
+      list(
+        setNames(list(setNames(hh_codes, hh_labels)), hh_label),
+        setNames(list(setNames(indiv_codes, indiv_labels)), indiv_label)
+      )
+    })
+
+    output$income_var_selector <- renderUI({
+      lang_val <- lang()
+      groups <- income_var_choices()
+      # selectInput with grouped options (Domiciliares / Individuais).
+      # `choices` accepts a named list of named vectors which Shiny renders
+      # as <optgroup> entries.
+      selectInput(
+        ns("income_var"),
+        i18n("inequality.income_var", lang_val),
+        choices = c(groups[[1]], groups[[2]]),
+        selected = isolate(input$income_var) %||% DEFAULT_INCOME_VAR
+      )
+    })
+
+    # ====================================================================
+    # Theme choices (Phase 2-3: shares folded into income_level)
     # ====================================================================
 
     theme_choices <- reactive({
       lang_val <- lang()
-      c(
+      iv <- input$income_var %||% DEFAULT_INCOME_VAR
+      base <- c(
         setNames("income_level", i18n("inequality.theme_income_level", lang_val)),
         setNames("inequality_indexes", i18n("inequality.theme_inequality_indexes", lang_val)),
-        setNames("shares", i18n("inequality.theme_shares", lang_val)),
-        setNames("lorenz", i18n("inequality.theme_lorenz", lang_val)),
-        setNames("decomposition", i18n("inequality.theme_decomposition", lang_val))
+        setNames("lorenz", i18n("inequality.theme_lorenz", lang_val))
       )
+      # Decomposição só está disponível para as 4 vars domiciliares
+      if (iv %in% HH_INCOME_VARS) {
+        base <- c(
+          base,
+          setNames("decomposition",
+                   i18n("inequality.theme_decomposition", lang_val))
+        )
+      }
+      base
     })
 
     output$theme_selector <- renderUI({
@@ -231,49 +290,26 @@ inequalityServer <- function(id, shared_data, lang) {
       theme <- input$theme
       if (is.null(theme)) theme <- "inequality_indexes"
 
-      # Quarterly individual labor-income measures only appear when the
-      # corresponding pre-computed asset is present in shared_data.
-      qinc_data <- if (is.function(shared_data$get_quarterly_income_data)) {
-        tryCatch(shared_data$get_quarterly_income_data(),
-                 error = function(e) NULL)
-      } else {
-        NULL
-      }
-      qinc_available <- !is.null(qinc_data) &&
-        is.data.frame(qinc_data) && nrow(qinc_data) > 0
-
       switch(theme,
-        income_level = {
-          base <- c(
-            setNames("mean_income",
-                     i18n("inequality.mean_income", lang_val)),
-            setNames("median_income",
-                     i18n("inequality.median_income", lang_val))
-          )
-          if (qinc_available) {
-            c(
-              base,
-              setNames("mean_indiv_hab_princ",
-                       i18n("inequality.mean_indiv_hab_princ", lang_val)),
-              setNames("median_indiv_hab_princ",
-                       i18n("inequality.median_indiv_hab_princ", lang_val)),
-              setNames("mean_indiv_efe_princ",
-                       i18n("inequality.mean_indiv_efe_princ", lang_val)),
-              setNames("median_indiv_efe_princ",
-                       i18n("inequality.median_indiv_efe_princ", lang_val)),
-              setNames("mean_indiv_hab_todos",
-                       i18n("inequality.mean_indiv_hab_todos", lang_val)),
-              setNames("median_indiv_hab_todos",
-                       i18n("inequality.median_indiv_hab_todos", lang_val)),
-              setNames("mean_indiv_efe_todos",
-                       i18n("inequality.mean_indiv_efe_todos", lang_val)),
-              setNames("median_indiv_efe_todos",
-                       i18n("inequality.median_indiv_efe_todos", lang_val))
-            )
-          } else {
-            base
-          }
-        },
+        # Phase 2-3 + 2-4: income_level lists statistical measures
+        # (mean, min, P10, P25, median, P75, P90, max — ordered by
+        # ascending percentile so the dropdown reads naturally), plus
+        # the income shares (quintile/decile) folded from the old
+        # "shares" theme.
+        income_level = c(
+          setNames("mean",     i18n("inequality.mean",     lang_val)),
+          setNames("min",      i18n("inequality.min",      lang_val)),
+          setNames("p10",      i18n("inequality.p10",      lang_val)),
+          setNames("p25",      i18n("inequality.p25",      lang_val)),
+          setNames("median",   i18n("inequality.median",   lang_val)),
+          setNames("p75",      i18n("inequality.p75",      lang_val)),
+          setNames("p90",      i18n("inequality.p90",      lang_val)),
+          setNames("max",      i18n("inequality.max",      lang_val)),
+          setNames("quintile",
+                   i18n("inequality.quintile_shares", lang_val)),
+          setNames("decile",
+                   i18n("inequality.decile_shares", lang_val))
+        ),
         inequality_indexes = c(
           setNames("gini", i18n("inequality.gini", lang_val)),
           setNames("palma", i18n("inequality.palma", lang_val)),
@@ -284,10 +320,6 @@ inequalityServer <- function(id, shared_data, lang) {
           setNames("top5_share", i18n("inequality.top5_share", lang_val)),
           setNames("top10_share", i18n("inequality.top10_share", lang_val)),
           setNames("bottom50_share", i18n("inequality.bottom50_share", lang_val))
-        ),
-        shares = c(
-          setNames("quintile", i18n("inequality.quintile_shares", lang_val)),
-          setNames("decile", i18n("inequality.decile_shares", lang_val))
         ),
         lorenz = c(
           setNames("lorenz_single", i18n("inequality.lorenz", lang_val)),
@@ -562,7 +594,15 @@ inequalityServer <- function(id, shared_data, lang) {
       theme <- input$theme
       sel_measure <- input$measure
       breakdown <- input$breakdown
+      iv <- input$income_var %||% DEFAULT_INCOME_VAR
       if (is.null(theme) || is.null(breakdown)) return(NULL)
+
+      # Phase 2-3: filter by income_var (column present in both annual
+      # and quarterly assets after the Phase 2-2 schema change).
+      if ("income_var" %in% names(dt)) {
+        dt <- dt[income_var == iv]
+      }
+      if (!nrow(dt)) return(NULL)
 
       # Filter by breakdown
       sub <- dt[breakdown_type == breakdown]
@@ -573,8 +613,13 @@ inequalityServer <- function(id, shared_data, lang) {
         sub <- sub[breakdown_value %in% input$group_filter]
       }
 
-      # Filter by measure (for time series themes)
-      if (theme %in% c("income_level", "inequality_indexes") && !is.null(sel_measure)) {
+      # Filter by measure (for time series themes). When the user picks
+      # "quintile" or "decile" inside income_level, the shares branch
+      # of the plot reactives reads income_shares_data instead — this
+      # filter is a no-op there.
+      if (theme %in% c("income_level", "inequality_indexes") &&
+          !is.null(sel_measure) &&
+          !sel_measure %in% c("quintile", "decile")) {
         sub <- sub[measure == sel_measure]
       }
 
@@ -616,10 +661,21 @@ inequalityServer <- function(id, shared_data, lang) {
 
       if (is.null(theme)) return(plot_ly())
 
-      # ---- SHARES: stacked area ----
-      if (theme == "shares") {
+      # ---- SHARES: stacked area (Phase 2-3: folded into income_level
+      # when measure is quintile or decile) ----
+      shares_active <- (!is.null(theme) && theme == "income_level" &&
+                       !is.null(measure) && measure %in% c("quintile", "decile"))
+      if (shares_active) {
         sdt <- shares_data()
         if (is.null(sdt) || nrow(sdt) == 0) return(plot_ly())
+
+        # Filter by income_var (Phase 2-3: shares now carry the
+        # income_var dimension so the same theme can show parcelas for
+        # any of the 4 hh income variants).
+        iv <- input$income_var %||% DEFAULT_INCOME_VAR
+        if ("income_var" %in% names(sdt)) {
+          sdt <- sdt[income_var == iv]
+        }
 
         sel_group_type <- if (!is.null(measure) && measure == "decile") "decile" else "quintile"
         # Shares always uses overall (breakdown hidden for this theme)
@@ -672,6 +728,14 @@ inequalityServer <- function(id, shared_data, lang) {
       if (theme == "lorenz") {
         ldt <- lorenz_data_all()
         if (is.null(ldt) || nrow(ldt) == 0) return(plot_ly())
+
+        # Phase 2-3: filter Lorenz by selected income_var (annual asset
+        # — only the 4 hh variants are available in lorenz_data.rds)
+        iv <- input$income_var %||% DEFAULT_INCOME_VAR
+        if ("income_var" %in% names(ldt) && iv %in% HH_INCOME_VARS) {
+          ldt <- ldt[income_var == iv]
+        }
+        if (!nrow(ldt)) return(plot_ly())
 
         if (!is.null(measure) && measure == "lorenz_compare") {
           # Compare two periods
@@ -774,6 +838,15 @@ inequalityServer <- function(id, shared_data, lang) {
       if (theme == "decomposition") {
         ddt <- decomp_data()
         if (is.null(ddt) || nrow(ddt) == 0) return(plot_ly())
+
+        # Phase 2-3: pick the decomposition kind based on the user's
+        # income_var (hh_*_efe -> efetiva ; hh_*_hab -> habitual).
+        iv <- input$income_var %||% DEFAULT_INCOME_VAR
+        kind <- decomp_kind_for(iv)
+        if ("decomp_kind" %in% names(ddt) && !is.na(kind)) {
+          ddt <- ddt[decomp_kind == kind]
+        }
+        if (!nrow(ddt)) return(plot_ly())
 
         # Use selected period or latest
         selected_ym <- if (!is.null(input$period_picker)) {
@@ -962,19 +1035,16 @@ inequalityServer <- function(id, shared_data, lang) {
         }
       }
 
-      # Format y-axis based on measure (currency: hhinc_pc + the 8
-      # quarterly individual labor-income measures)
-      currency_measures <- c(
-        "mean_income", "median_income",
-        "mean_indiv_hab_princ", "median_indiv_hab_princ",
-        "mean_indiv_efe_princ", "median_indiv_efe_princ",
-        "mean_indiv_hab_todos", "median_indiv_hab_todos",
-        "mean_indiv_efe_todos", "median_indiv_efe_todos"
-      )
+      # Format y-axis based on theme × measure. Phase 2-3 + 2-4: under
+      # the income_level theme any percentile statistic is currency;
+      # share-style measures use percent format.
+      is_currency_meas <- !is.null(theme) && theme == "income_level" &&
+        !is.null(measure) && measure %in% c("mean", "min", "p10", "p25",
+                                             "median", "p75", "p90", "max")
       yformat <- if (!is.null(measure) && measure %in%
                      c("top1_share", "top5_share", "top10_share", "bottom50_share")) {
         ".1%"
-      } else if (!is.null(measure) && measure %in% currency_measures) {
+      } else if (is_currency_meas) {
         ",.0f"
       } else {
         ",.3f"
@@ -1141,7 +1211,13 @@ inequalityServer <- function(id, shared_data, lang) {
 
     output$stat_cards_ui <- renderUI({
       theme <- input$theme
-      if (is.null(theme) || theme %in% c("lorenz", "shares", "decomposition")) {
+      measure <- input$measure
+      if (is.null(theme) || theme %in% c("lorenz", "decomposition")) {
+        return(NULL)
+      }
+      # Phase 2-3: hide stat cards in the shares sub-mode of income_level
+      if (theme == "income_level" &&
+          !is.null(measure) && measure %in% c("quintile", "decile")) {
         return(NULL)
       }
 
@@ -1176,13 +1252,11 @@ inequalityServer <- function(id, shared_data, lang) {
         # Format
         is_pct <- measure %in% c("top1_share", "top5_share", "top10_share",
                                    "bottom50_share")
-        is_currency <- measure %in% c(
-          "mean_income", "median_income",
-          "mean_indiv_hab_princ", "median_indiv_hab_princ",
-          "mean_indiv_efe_princ", "median_indiv_efe_princ",
-          "mean_indiv_hab_todos", "median_indiv_hab_todos",
-          "mean_indiv_efe_todos", "median_indiv_efe_todos"
-        )
+        # Phase 2-3 + 2-4: currency for any percentile statistic under
+        # the income_level theme (income_var routed upstream).
+        is_currency <- !is.null(theme) && theme == "income_level" &&
+                       measure %in% c("mean", "min", "p10", "p25",
+                                       "median", "p75", "p90", "max")
 
         fmt <- function(x) {
           if (is.na(x)) return(i18n("stats.na", lang_val))
@@ -1291,6 +1365,13 @@ inequalityServer <- function(id, shared_data, lang) {
         } else if (theme == "decomposition") {
           ddt <- decomp_data()
           if (is.null(ddt) || nrow(ddt) == 0) return()
+          # Phase 2-3: filter by decomp_kind from the chosen income_var
+          iv <- input$income_var %||% DEFAULT_INCOME_VAR
+          kind <- decomp_kind_for(iv)
+          if ("decomp_kind" %in% names(ddt) && !is.na(kind)) {
+            ddt <- ddt[decomp_kind == kind]
+          }
+          if (!nrow(ddt)) return()
           sel_ym <- if (!is.null(input$period_picker)) as.numeric(input$period_picker) else max(ddt$ref_month_yyyymm)
           ddt_sub <- ddt[ref_month_yyyymm == sel_ym]
           if (nrow(ddt_sub) == 0) return()

@@ -35,10 +35,13 @@ povertyUI <- function(id) {
         )
       ),
 
+      # Income variable (Habitual / Efetiva — Phase 2-5)
+      uiOutput(ns("poverty_income_var_selector")),
+
       # Poverty line selector
       uiOutput(ns("poverty_line_selector")),
 
-      # MW help note (conditional)
+      # MW help note (Phase 2-5: deprecated, kept as a no-op outlet)
       uiOutput(ns("poverty_line_help")),
 
       # Measure selector
@@ -158,12 +161,12 @@ povertyServer <- function(id, shared_data, lang) {
 
     poverty_line_choices <- reactive({
       lang_val <- lang()
+      # Phase 2-5: only the 3 World Bank lines remain (br_quarter_mw and
+      # br_half_mw were dropped together with the IBGE-XLS deflator).
       c(
         setNames("wb_300", i18n("poverty.line_300", lang_val)),
         setNames("wb_420", i18n("poverty.line_420", lang_val)),
-        setNames("wb_830", i18n("poverty.line_830", lang_val)),
-        setNames("br_quarter_mw", i18n("poverty.line_quarter_mw", lang_val)),
-        setNames("br_half_mw", i18n("poverty.line_half_mw", lang_val))
+        setNames("wb_830", i18n("poverty.line_830", lang_val))
       )
     })
 
@@ -173,12 +176,29 @@ povertyServer <- function(id, shared_data, lang) {
                   selected = isolate(input$poverty_line) %||% "wb_830")
     })
 
-    # MW help note (shown only for MW-based poverty lines)
+    # Phase 2-5: income_var selector for poverty (Habitual = hh_pc_hab,
+    # Efetiva = hh_pc_efe). Only shown when the loaded poverty_data
+    # carries the income_var dimension.
+    output$poverty_income_var_selector <- renderUI({
+      d <- shared_data$get_poverty_data()
+      if (is.null(d) || !"income_var" %in% names(d)) return(NULL)
+      lang_val <- lang()
+      selectInput(
+        ns("poverty_income_var"),
+        i18n("inequality.income_var", lang_val),
+        choices = c(
+          setNames("hh_pc_hab",
+                   i18n("inequality.income_var_hh_pc_hab", lang_val)),
+          setNames("hh_pc_efe",
+                   i18n("inequality.income_var_hh_pc_efe", lang_val))
+        ),
+        selected = isolate(input$poverty_income_var) %||% "hh_pc_hab"
+      )
+    })
+
+    # MW help note removed (Phase 2-5: lines no longer exist)
     output$poverty_line_help <- renderUI({
-      pl <- input$poverty_line
-      if (is.null(pl) || !pl %in% c("br_quarter_mw", "br_half_mw")) return(NULL)
-      tags$small(class = "text-muted d-block mt-1 mb-2",
-                 i18n("poverty.mw_note", lang()))
+      NULL
     })
 
     # ====================================================================
@@ -348,6 +368,14 @@ povertyServer <- function(id, shared_data, lang) {
       pline <- input$poverty_line
       breakdown <- input$breakdown
       if (is.null(pline) || is.null(breakdown)) return(NULL)
+
+      # Phase 2-5: filter by income_var (Habitual / Efetiva). Defaults
+      # to hh_pc_hab. Only kicks in when the loaded data carries the
+      # column.
+      if ("income_var" %in% names(dt)) {
+        iv <- input$poverty_income_var %||% "hh_pc_hab"
+        dt <- dt[income_var == iv]
+      }
 
       # Filter by poverty line and breakdown
       sub <- dt[poverty_line_id == pline & breakdown_type == breakdown]

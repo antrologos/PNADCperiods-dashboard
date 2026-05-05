@@ -493,6 +493,43 @@ translations <- list(
       en = "Monthly inequality estimates from mensalized annual PNADC microdata (2015-2024). All income values deflated to December 2025 BRL.",
       pt = "Estimativas mensais de desigualdade a partir de microdados mensalizados da PNADC anual (2015-2024). Todos os valores de renda deflacionados para dezembro de 2025."
     ),
+    # Top-level: tipo de renda (Phase 2-3)
+    income_var = list(en = "Income Variable", pt = "Tipo de Renda"),
+    income_var_group_hh    = list(en = "Household", pt = "Renda Domiciliar"),
+    income_var_group_indiv = list(en = "Individual (labor)",
+                                   pt = "Renda Individual do Trabalho"),
+    income_var_hh_total_efe = list(
+      en = "Household Income (Effective)",
+      pt = "Renda Domiciliar Efetiva"
+    ),
+    income_var_hh_pc_efe = list(
+      en = "Household Per Capita (Effective)",
+      pt = "RDPC Efetiva"
+    ),
+    income_var_hh_total_hab = list(
+      en = "Household Income (Usual labor + Effective other)",
+      pt = "Renda Domiciliar (Hab. trab. + Efe. outras)"
+    ),
+    income_var_hh_pc_hab = list(
+      en = "Household Per Capita (Usual labor + Effective other)",
+      pt = "RDPC (Hab. trab. + Efe. outras)"
+    ),
+    income_var_indiv_hab_princ = list(
+      en = "Usual Earnings (Main Job)",
+      pt = "Hab. Trab. Principal"
+    ),
+    income_var_indiv_efe_princ = list(
+      en = "Effective Earnings (Main Job)",
+      pt = "Efe. Trab. Principal"
+    ),
+    income_var_indiv_hab_todos = list(
+      en = "Usual Earnings (All Jobs)",
+      pt = "Hab. Todos os Trabalhos"
+    ),
+    income_var_indiv_efe_todos = list(
+      en = "Effective Earnings (All Jobs)",
+      pt = "Efe. Todos os Trabalhos"
+    ),
     # Themes
     theme = list(en = "Analysis", pt = "Análise"),
     theme_income_level = list(en = "Income Level", pt = "Nível de Renda"),
@@ -501,6 +538,21 @@ translations <- list(
     theme_shares = list(en = "Income Shares", pt = "Parcelas de Renda"),
     theme_lorenz = list(en = "Lorenz Curve", pt = "Curva de Lorenz"),
     theme_decomposition = list(en = "Decomposition", pt = "Decomposição"),
+    # Decomposition kinds (Phase 2-3)
+    decomp_habitual = list(en = "Habitual decomposition",
+                           pt = "Decomposição Habitual"),
+    decomp_efetiva  = list(en = "Effective decomposition",
+                           pt = "Decomposição Efetiva"),
+    # Generic measure labels (Phase 2-3: unified across income variables)
+    mean   = list(en = "Mean", pt = "Média"),
+    median = list(en = "Median", pt = "Mediana"),
+    # Phase 2-4: extended percentile statistics
+    min    = list(en = "Minimum",     pt = "Mínimo"),
+    p10    = list(en = "P10 (1st decile)",   pt = "P10 (1º decil)"),
+    p25    = list(en = "P25 (1st quartile)", pt = "P25 (1º quartil)"),
+    p75    = list(en = "P75 (3rd quartile)", pt = "P75 (3º quartil)"),
+    p90    = list(en = "P90 (9th decile)",   pt = "P90 (9º decil)"),
+    max    = list(en = "Maximum",     pt = "Máximo"),
     # Measures
     measure = list(en = "Measure", pt = "Medida"),
     gini = list(en = "Gini Coefficient", pt = "Coeficiente de Gini"),
