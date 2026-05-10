@@ -11,14 +11,7 @@
 #   5. build_prepared_microdata: select dashboard cols, write .fst
 
 #' Thin writer: select dashboard-relevant columns from `annual_recoded` and
-#' write `prepared_microdata.fst`.
-#'
-#' PR4: this function used to load the annual stack, apply_periods, V2005
-#' filter, deflate, build pc_income components, build demographic groupings.
-#' All of that moved to dedicated targets:
-#'   stack_annual → annual_stacked  (tar-stack.R)
-#'   recode_annual → annual_recoded (tar-recode.R)
-#' This is now just a writer that materialises the .fst cache for external
+#' write `prepared_microdata.fst`. Materialises the .fst cache for external
 #' consumers (legacy scripts, dashboard offline mode, Phase 5 equivalence).
 #'
 #' @param annual_recoded data.table from `recode_annual`
@@ -104,8 +97,8 @@ deflate_incomes <- function(d, ipca_table) {
   data.table::setattr(d, "T_ref_habitual", res_hab$T_ref)
   data.table::setattr(d, "T_ref_efetivo",  res_efe$T_ref)
 
-  message(sprintf("IPCA deflation: T_ref habitual=%d, efetivo=%d",
-                  res_hab$T_ref, res_efe$T_ref))
+  message("IPCA deflation: T_ref habitual=", res_hab$T_ref,
+          ", efetivo=", res_efe$T_ref)
 
   # Years with the full income module: keep legacy behaviour (NA -> 0).
   # Years flagged as simplified (e.g. PNADC anual 2025 visita 1) lack

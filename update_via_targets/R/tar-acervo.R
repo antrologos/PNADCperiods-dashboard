@@ -156,22 +156,10 @@ plan_acervo_actions <- function(file_type, expected, local_inventory,
   out[name_chg | date_chg,         status := "OUTDATED"]
   out[cmp & !(name_chg | date_chg), status := "OK"]
 
-  # ---------------------------------------------------------------------------
-  # Phase 3: detect drift in required_vars vs actual columns of local .fst.
-  #
-  # When `quarterly_required_vars` or `annual_required_vars` is expanded
-  # (e.g. VD4016 added 2026-05-04, commit 3648fc3), `.fst` files downloaded
-  # before the change lack the new columns. The pipeline must detect this
-  # and trigger re-download — even when filename + Last-Modified haven't
-  # changed.
-  #
-  # Loop prevention: sidecar carries `required_vars_hash` from the most
-  # recent download attempt. If the current required_vars hash matches AND
-  # the column is still missing, IBGE's zip itself doesn't have it — keep
-  # OK so we don't redownload on every run.
-  # ---------------------------------------------------------------------------
-  if (!is.null(required_vars) && length(required_vars) > 0L) {
-    out[, schema_drift_reason := NA_character_]
+  # Detect schema drift: .fst missing required_vars triggers OUTDATED.
+  # Sidecar carries required_vars_hash to avoid redownload loop when IBGE
+  # itself lacks the column (same hash + still missing => keep OK).
+  if (length(required_vars) > 0L) {
     current_hash <- digest::digest(sort(unique(as.character(required_vars))))
 
     has_local_idx <- which(!is.na(out$local_path))
@@ -200,17 +188,16 @@ plan_acervo_actions <- function(file_type, expected, local_inventory,
         # IBGE upstream lacks these columns; sidecar already records the
         # attempt. Don't loop. Status already OK; just annotate reason.
         out[i, status := "OK"]
-        out[i, reason := sprintf(
-          "schema drift; missing %s; already attempted with current required_vars",
-          paste(missing_vars, collapse = ", "))]
+        out[i, reason := paste0(
+          "schema drift; missing ", paste(missing_vars, collapse = ", "),
+          "; already attempted with current required_vars")]
       } else {
         out[i, status := "OUTDATED"]
-        out[i, reason := sprintf(
-          "schema drift: local .fst missing %s",
+        out[i, reason := paste0(
+          "schema drift: local .fst missing ",
           paste(missing_vars, collapse = ", "))]
       }
     }
-    out[, schema_drift_reason := NULL]
   }
 
   out[]
@@ -303,7 +290,7 @@ update_acervo_sidecar <- function(sidecar, basename, upstream_filename,
   if (!is.null(actual_columns) && length(actual_columns) > 0L) {
     entry$actual_columns <- as.character(actual_columns)
   }
-  if (!is.null(required_vars_hash) && nzchar(as.character(required_vars_hash))) {
+  if (!is.null(required_vars_hash)) {
     entry$required_vars_hash <- as.character(required_vars_hash)
   }
   sidecar[[basename]] <- entry
@@ -587,16 +574,9 @@ download_visit <- function(year, visit, dest_path,
 }
 
 # ==== Apply plan: download each MISSING/OUTDATED row via PNADcIBGE ============
-# Side effects: writes files on disk unless ACERVO_DRY_RUN=1. Updates sidecar
-# Updates the local sidecar via `<-` (rebinding the parameter inside this
-# function frame) and persists to sidecar_path at the end. NOTE: an earlier
-# version used `<<-` which silently created a `sidecar` in globalenv and left
-# the local parameter untouched, so save_acervo_sidecar always wrote `[]`.
-#
-# Phase 3: optionally captures `actual_columns` from each .fst (via
-# fst::metadata_fst) and stores `required_vars_hash` so subsequent
-# plan_acervo_actions runs detect schema drift accurately and avoid
-# infinite redownload loops when IBGE's upstream lacks a requested column.
+# Writes files on disk unless ACERVO_DRY_RUN=1. Updates local sidecar (via `<-`,
+# not `<<-`) and persists to sidecar_path at the end. Captures actual_columns
+# + required_vars_hash for schema-drift detection by plan_acervo_actions.
 apply_acervo_plan <- function(plan, file_type, dest_dir,
                                sidecar = list(),
                                sidecar_path = NULL,
@@ -607,7 +587,7 @@ apply_acervo_plan <- function(plan, file_type, dest_dir,
 
   # Phase 3: pre-compute hash of current required_vars (NULL → no hash;
   # sidecar won't carry required_vars_hash, falling back to legacy semantics).
-  current_hash <- if (!is.null(required_vars) && length(required_vars) > 0L) {
+  current_hash <- if (length(required_vars) > 0L) {
     digest::digest(sort(unique(as.character(required_vars))))
   } else NULL
 
