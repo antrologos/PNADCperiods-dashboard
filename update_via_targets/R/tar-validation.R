@@ -90,15 +90,23 @@ quarantine <- function(path, reason, n_rows = NA_integer_) {
 # Validation of dashboard asset (.rds)
 # ------------------------------------------------------------------------------
 
+# Phase 2-4 (commit 5a49939) replaced the legacy `mean_income`/`median_income`
+# duo with 9 inequality measures + 8 distribution stats (mean, min, p10, p25,
+# median, p75, p90, max). build_inequality_outputs and
+# build_quarterly_income_outputs share the same 17-measure grade.
+.phase2_measure_levels <- c(
+  "gini", "palma", "p90p10", "p90p50", "p50p10",
+  "top1_share", "top5_share", "top10_share", "bottom50_share",
+  "mean", "min", "p10", "p25", "median", "p75", "p90", "max"
+)
+
 dashboard_asset_specs <- list(
   inequality_data = list(
     required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value",
                       "measure", "value", "n_obs", "period"),
     # Enforced by validate_dashboard_asset: every value of `measure` must
     # belong to this set. Catches builder regressions that rename measures.
-    measure_levels = c("gini", "palma", "p90p10", "p90p50", "p50p10",
-                       "top1_share", "top5_share", "top10_share",
-                       "bottom50_share", "mean_income", "median_income"),
+    measure_levels = .phase2_measure_levels,
     min_rows = 1000L
   ),
   income_shares_data = list(
@@ -112,6 +120,26 @@ dashboard_asset_specs <- list(
     # them (e.g., to pop_share / income_share), we want a loud failure here.
     required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value",
                       "p", "lorenz"),
+    min_rows = 1000L
+  ),
+  # Phase 2-6 (commit ea95a45): individual labor income from quarterly
+  # mensalized stack — same long schema as inequality_data but with
+  # `income_var` as a top-level dimension.
+  quarterly_income_data = list(
+    required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value",
+                      "measure", "value", "n_obs", "period", "income_var"),
+    measure_levels = .phase2_measure_levels,
+    min_rows = 1000L
+  ),
+  quarterly_income_shares_data = list(
+    required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value",
+                      "group_type", "group_label", "share", "period",
+                      "income_var"),
+    min_rows = 500L
+  ),
+  quarterly_lorenz_data = list(
+    required_cols = c("ref_month_yyyymm", "breakdown_type", "breakdown_value",
+                      "p", "lorenz", "income_var"),
     min_rows = 1000L
   ),
   income_decomposition_data = list(

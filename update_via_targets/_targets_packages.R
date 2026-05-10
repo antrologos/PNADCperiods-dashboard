@@ -20,6 +20,9 @@ tar_pipeline_packages <- c(
   # Filesystem helpers
   "fs",
 
+  # Hashing (required_vars_hash in acervo sidecar — Phase 3 schema drift)
+  "digest",
+
   # PNADC-specific (CRAN, pinned by tar_option_set imports)
   "PNADCperiods",
   "PNADcIBGE",
