@@ -18,24 +18,6 @@ load_deseasonalize_helpers <- function(utils_path = NULL) {
   source(utils_path)
 }
 
-# Apply a single deseasonalization function to one (time, values) pair, returning
-# the adjusted values in the same row order as the input.
-.deseasonalize_one_group <- function(time, values, fn) {
-  if (length(values) == 0L) return(numeric(0))
-  ord <- order(time)
-  v_ord <- values[ord]
-  t_ord <- time[ord]
-  # time is integer YYYYMM; build first-of-month dates
-  d_ord <- as.Date(sprintf("%d-%02d-01", t_ord %/% 100L, t_ord %% 100L))
-  adj_ord <- suppressWarnings(fn(v_ord, d_ord))
-  if (length(adj_ord) != length(v_ord)) {
-    return(values)
-  }
-  out <- rep(NA_real_, length(values))
-  out[ord] <- adj_ord
-  out
-}
-
 #' Add X-13 and STL deseasonalized columns to a long-format data.table
 #'
 #' For each name in `value_cols`, two new columns are appended: `<col>_x13`
@@ -76,8 +58,25 @@ deseasonalize_long_table <- function(data,
 
     for (vc in value_cols) {
       new_col <- paste0(vc, "_", m)
-      data[, (new_col) := .deseasonalize_one_group(get(time_col), get(vc), fn),
-           by = group_cols]
+      data[, (new_col) := {
+        values <- get(vc)
+        time_v <- get(time_col)
+        if (length(values) == 0L) numeric(0)
+        else {
+          ord <- order(time_v)
+          v_ord <- values[ord]
+          t_ord <- time_v[ord]
+          # time is integer YYYYMM; build first-of-month dates
+          d_ord <- as.Date(sprintf("%d-%02d-01", t_ord %/% 100L, t_ord %% 100L))
+          adj_ord <- suppressWarnings(fn(v_ord, d_ord))
+          if (length(adj_ord) != length(v_ord)) values
+          else {
+            out <- rep(NA_real_, length(values))
+            out[ord] <- adj_ord
+            out
+          }
+        }
+      }, by = group_cols]
     }
   }
 
