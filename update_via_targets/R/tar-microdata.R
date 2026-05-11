@@ -833,32 +833,35 @@ build_poverty_outputs <- function(prepared_microdata_path,
 
   out <- list()
   k <- 0L
+  if (!nrow(d)) {
+    poverty_lines <- list()  # short-circuit; downstream still rbinds empty
+  }
   for (iv in income_specs) {
     income_col <- iv$col
     for (line_name in names(poverty_lines)) {
-      pline <- poverty_lines[[line_name]]
-      d_z <- data.table::copy(d)
-      d_z[, z := pline$value]
-      if (!nrow(d_z)) next
+      z_val <- poverty_lines[[line_name]]$value
+      # fgt_all() accepts a scalar z and broadcasts to length(x), so the
+      # original `d_z <- copy(d); d_z[, z := z_val]` is unnecessary —
+      # 48 copies of d (~280 MB each) avoided per build_poverty_outputs run.
       for (sp in breakdown_specs) {
         if (sp$type == "overall") {
-          res <- d_z[, {
-            fgt <- fgt_all(get(income_col), z, weight_monthly)
+          res <- d[, {
+            fgt <- fgt_all(get(income_col), z_val, weight_monthly)
             list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
                  n_poor = fgt$n_poor, total_pop = fgt$total_pop,
                  mean_income_poor = fgt$mean_income_poor,
-                 poverty_line_value = z[1L], n_obs = .N)
+                 poverty_line_value = z_val, n_obs = .N)
           }, by = .(ref_month_yyyymm)]
           res[, breakdown_type := "overall"]
           res[, breakdown_value := "Nacional"]
         } else {
           bcol <- sp$col
-          res <- d_z[!is.na(get(bcol)), {
-            fgt <- fgt_all(get(income_col), z, weight_monthly)
+          res <- d[!is.na(get(bcol)), {
+            fgt <- fgt_all(get(income_col), z_val, weight_monthly)
             list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
                  n_poor = fgt$n_poor, total_pop = fgt$total_pop,
                  mean_income_poor = fgt$mean_income_poor,
-                 poverty_line_value = z[1L], n_obs = .N)
+                 poverty_line_value = z_val, n_obs = .N)
           }, by = c("ref_month_yyyymm", bcol)]
           data.table::setnames(res, bcol, "breakdown_value")
           res[, breakdown_type := sp$type]
