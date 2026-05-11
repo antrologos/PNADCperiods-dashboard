@@ -73,7 +73,8 @@ inventory_local <- function(dir, pattern, ignore.case = FALSE) {
 # is NULL, legacy OK/MISSING only (no OUTDATED detection).
 plan_acervo_actions <- function(file_type, expected, local_inventory,
                                  remote_catalog = NULL,
-                                 catalog_sidecar = NULL) {
+                                 catalog_sidecar = NULL,
+                                 required_vars = NULL) {
   out <- merge(
     data.table::copy(expected),
     local_inventory[, .(basename, local_path = path,
@@ -119,12 +120,25 @@ plan_acervo_actions <- function(file_type, expected, local_inventory,
         status = "MISSING",
         reason = sprintf("FTP has %s; local absent", upstream_filename))]
 
-  # Both present — bootstrap (no sidecar entry) is OK, captures FTP identity.
-  both     <- has_remote & has_local
-  has_prev <- !is.na(out$prev_upstream_filename)
-  out[both & !has_prev, `:=`(
+  # Bootstrap (sidecar empty): compare local mtime to FTP Last-Modified.
+  # .fst mtime is when PNADcIBGE wrote it; older than upstream by >1 day = stale.
+  both      <- has_remote & has_local
+  has_prev  <- !is.na(out$prev_upstream_filename)
+  bootstrap <- both & !has_prev
+  mtime_old <- bootstrap &
+    !is.na(out$upstream_last_modified) & !is.na(out$local_mtime) &
+    as.numeric(out$upstream_last_modified) - as.numeric(out$local_mtime) > 86400
+
+  out[bootstrap & !mtime_old, `:=`(
         status = "OK",
         reason = "no sidecar; bootstrap from current FTP state")]
+  out[mtime_old, `:=`(
+        status = "OUTDATED",
+        reason = paste0(
+          "bootstrap (no sidecar): Last-Modified ",
+          format(upstream_last_modified, "%Y-%m-%d %H:%M"),
+          " newer than local mtime ",
+          format(local_mtime, "%Y-%m-%d %H:%M")))]
 
   # Both present + sidecar exists — compare filename and Last-Modified.
   cmp      <- both & has_prev
@@ -141,6 +155,50 @@ plan_acervo_actions <- function(file_type, expected, local_inventory,
         format(upstream_last_modified,      "%Y-%m-%d %H:%M"))]
   out[name_chg | date_chg,         status := "OUTDATED"]
   out[cmp & !(name_chg | date_chg), status := "OK"]
+
+  # Detect schema drift: .fst missing required_vars triggers OUTDATED.
+  # Sidecar carries required_vars_hash to avoid redownload loop when IBGE
+  # itself lacks the column (same hash + still missing => keep OK).
+  if (length(required_vars) > 0L) {
+    current_hash <- digest::digest(sort(unique(as.character(required_vars))))
+
+    has_local_idx <- which(!is.na(out$local_path))
+    for (i in has_local_idx) {
+      lp <- out$local_path[i]
+      bn <- out$basename[i]
+
+      # Prefer sidecar's recorded actual_columns to avoid I/O. Fall back to
+      # reading the .fst metadata directly.
+      sc_entry <- if (!is.null(catalog_sidecar)) catalog_sidecar[[bn]] else NULL
+      actual_cols <- sc_entry$actual_columns
+      if (is.null(actual_cols)) {
+        actual_cols <- tryCatch(
+          fst::metadata_fst(lp)$columnNames,
+          error = function(e) character(0)
+        )
+      }
+      missing_vars <- setdiff(required_vars, actual_cols)
+      if (length(missing_vars) == 0L) next  # full schema present, nothing to do
+
+      prev_hash <- sc_entry$required_vars_hash
+      already_tried <- !is.null(prev_hash) &&
+                       identical(as.character(prev_hash), current_hash)
+
+      if (already_tried) {
+        # IBGE upstream lacks these columns; sidecar already records the
+        # attempt. Don't loop. Status already OK; just annotate reason.
+        out[i, status := "OK"]
+        out[i, reason := paste0(
+          "schema drift; missing ", paste(missing_vars, collapse = ", "),
+          "; already attempted with current required_vars")]
+      } else {
+        out[i, status := "OUTDATED"]
+        out[i, reason := paste0(
+          "schema drift: local .fst missing ",
+          paste(missing_vars, collapse = ", "))]
+      }
+    }
+  }
 
   out[]
 }
@@ -211,15 +269,31 @@ save_acervo_sidecar <- function(sidecar, path) {
 }
 
 #' Update the sidecar list with a new entry after a successful download.
+#'
+#' Phase 3 schema-drift tracking: callers should pass `actual_columns`
+#' (read via `fst::metadata_fst(local_path)$columnNames`) and
+#' `required_vars_hash` (= `digest::digest(sort(required_vars))`) so the
+#' next run can detect when the schema requested is wider than what the
+#' local file actually contains. Both are optional for backward compat;
+#' missing either disables loop-prevention until the next download.
 update_acervo_sidecar <- function(sidecar, basename, upstream_filename,
-                                   upstream_last_modified) {
+                                   upstream_last_modified,
+                                   actual_columns = NULL,
+                                   required_vars_hash = NULL) {
   lm <- if (inherits(upstream_last_modified, "POSIXct")) {
     format(upstream_last_modified, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
   } else upstream_last_modified
-  sidecar[[basename]] <- list(
+  entry <- list(
     upstream_filename = upstream_filename,
     upstream_last_modified = lm
   )
+  if (!is.null(actual_columns) && length(actual_columns) > 0L) {
+    entry$actual_columns <- as.character(actual_columns)
+  }
+  if (!is.null(required_vars_hash)) {
+    entry$required_vars_hash <- as.character(required_vars_hash)
+  }
+  sidecar[[basename]] <- entry
   sidecar
 }
 
@@ -500,23 +574,42 @@ download_visit <- function(year, visit, dest_path,
 }
 
 # ==== Apply plan: download each MISSING/OUTDATED row via PNADcIBGE ============
-# Side effects: writes files on disk unless ACERVO_DRY_RUN=1. Updates sidecar
-# in-place via <<- and persists to sidecar_path at the end.
+# Writes files on disk unless ACERVO_DRY_RUN=1. Updates local sidecar (via `<-`,
+# not `<<-`) and persists to sidecar_path at the end. Captures actual_columns
+# + required_vars_hash for schema-drift detection by plan_acervo_actions.
 apply_acervo_plan <- function(plan, file_type, dest_dir,
                                sidecar = list(),
-                               sidecar_path = NULL) {
+                               sidecar_path = NULL,
+                               required_vars = NULL) {
   out <- data.table::copy(plan)
   out[, download_timestamp := as.POSIXct(NA, tz = "UTC")]
   out[, n_rows := NA_integer_]
 
+  # Phase 3: pre-compute hash of current required_vars (NULL → no hash;
+  # sidecar won't carry required_vars_hash, falling back to legacy semantics).
+  current_hash <- if (length(required_vars) > 0L) {
+    digest::digest(sort(unique(as.character(required_vars))))
+  } else NULL
+
+  # Helper: read columns from an .fst file (NULL on any error).
+  .read_fst_cols <- function(path) {
+    if (is.na(path) || !file.exists(path)) return(NULL)
+    tryCatch(fst::metadata_fst(path)$columnNames,
+             error = function(e) NULL)
+  }
+
   # Bootstrap: OK rows with upstream filename but no sidecar entry yet —
-  # register identity without downloading (handles first FTP-watcher run)
+  # register identity without downloading (handles first FTP-watcher run).
+  # Phase 3: also capture actual_columns from local .fst.
   boot <- which(out$status == "OK" & !is.na(out$upstream_filename) &
                 is.na(out$prev_upstream_filename))
   for (i in boot) {
-    sidecar <<- update_acervo_sidecar(
+    actual_cols <- .read_fst_cols(out$local_path[i])
+    sidecar <- update_acervo_sidecar(
       sidecar, out$basename[i], out$upstream_filename[i],
-      out$upstream_last_modified[i])
+      out$upstream_last_modified[i],
+      actual_columns = actual_cols,
+      required_vars_hash = current_hash)
   }
 
   # Sequential I/O: download each MISSING/OUTDATED row
@@ -559,8 +652,12 @@ apply_acervo_plan <- function(plan, file_type, dest_dir,
         download_timestamp = Sys.time()
       )]
       if (!is.na(out$upstream_filename[i])) {
-        sidecar <<- update_acervo_sidecar(
-          sidecar, bn, out$upstream_filename[i], out$upstream_last_modified[i])
+        # Phase 3: capture actual columns from the just-written .fst.
+        actual_cols <- .read_fst_cols(dest)
+        sidecar <- update_acervo_sidecar(
+          sidecar, bn, out$upstream_filename[i], out$upstream_last_modified[i],
+          actual_columns = actual_cols,
+          required_vars_hash = current_hash)
       }
     } else if (!download_ok) {
       out[i, `:=`(status = "FAILED", reason = "download error")]

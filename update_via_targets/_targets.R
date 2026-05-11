@@ -299,7 +299,8 @@ list(
       expected        = expected_quarters,
       local_inventory = quarterly_inventory,
       remote_catalog  = external_state_check$ftp_catalog$trimestral$dados,
-      catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
+      catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path),
+      required_vars   = quarterly_required_vars
     )[, file_type := "quarterly"][]
   ),
 
@@ -310,18 +311,20 @@ list(
       expected        = expected_visits,
       local_inventory = annual_inventory,
       remote_catalog  = external_state_check$ftp_catalog$anual$dados,
-      catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path)
+      catalog_sidecar = load_acervo_sidecar(acervo_sidecar_path),
+      required_vars   = annual_required_vars
     )[, file_type := "annual"][]
   ),
 
   tar_target(
     quarterly_manifest_partial,
     apply_acervo_plan(
-      plan         = quarterly_plan,
-      file_type    = "quarterly",
-      dest_dir     = acervo_paths$quarterly,
-      sidecar      = load_acervo_sidecar(acervo_sidecar_path),
-      sidecar_path = acervo_sidecar_path
+      plan          = quarterly_plan,
+      file_type     = "quarterly",
+      dest_dir      = acervo_paths$quarterly,
+      sidecar       = load_acervo_sidecar(acervo_sidecar_path),
+      sidecar_path  = acervo_sidecar_path,
+      required_vars = quarterly_required_vars
     ),
     error = "continue"
   ),
@@ -329,11 +332,12 @@ list(
   tar_target(
     annual_manifest_partial,
     apply_acervo_plan(
-      plan         = annual_plan,
-      file_type    = "annual",
-      dest_dir     = acervo_paths$annual,
-      sidecar      = load_acervo_sidecar(acervo_sidecar_path),
-      sidecar_path = acervo_sidecar_path
+      plan          = annual_plan,
+      file_type     = "annual",
+      dest_dir      = acervo_paths$annual,
+      sidecar       = load_acervo_sidecar(acervo_sidecar_path),
+      sidecar_path  = acervo_sidecar_path,
+      required_vars = annual_required_vars
     ),
     error = "continue"
   ),

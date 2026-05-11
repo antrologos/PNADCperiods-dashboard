@@ -26,8 +26,7 @@ stack_quarterly <- function(quarterly_manifest,
     stop("No quarterly files available to stack.", call. = FALSE)
   }
 
-  message(sprintf("Loading %d quarterly files (single stack)...",
-                  nrow(quarterly_files)))
+  message("Loading ", nrow(quarterly_files), " quarterly files (single stack)...")
   out <- data.table::rbindlist(
     lapply(quarterly_files$local_path, function(p) {
       avail <- intersect(cols, names(fst::read_fst(p, from = 1L, to = 1L)))
@@ -36,7 +35,7 @@ stack_quarterly <- function(quarterly_manifest,
     fill = TRUE
   )
   gc()
-  message(sprintf("Quarterly stack: %s rows", format(nrow(out), big.mark = ",")))
+  message("Quarterly stack: ", format(nrow(out), big.mark = ","), " rows")
   out
 }
 
@@ -63,8 +62,7 @@ stack_annual <- function(annual_manifest) {
   if (!nrow(annual_files)) {
     stop("No annual files available after visit filter.", call. = FALSE)
   }
-  message(sprintf("Loading %d annual visits (single stack)...",
-                  nrow(annual_files)))
+  message("Loading ", nrow(annual_files), " annual visits (single stack)...")
   load_annual_with_income_harmonization(annual_files$local_path)
 }
 

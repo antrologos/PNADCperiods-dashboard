@@ -269,6 +269,304 @@ test_that("bootstrap: no sidecar + local present + remote present => OK + captur
   unlink(tmp, recursive = TRUE)
 })
 
+# -----------------------------------------------------------------------------
+# Bootstrap mtime-based comparison: detect outdated local files when sidecar
+# is empty (first run after a sidecar reset).
+# -----------------------------------------------------------------------------
+
+test_that("bootstrap: local mtime older than FTP Last-Modified => OUTDATED", {
+  source_pipeline_R()
+  expected <- list_expected_visits(2026L, visits = 1L)
+  expected <- expected[year == 2025L]
+  tmp <- tempfile(); dir.create(tmp)
+  fpath <- file.path(tmp, "pnadc_2025_visita1.fst")
+  writeLines("x", fpath)
+  # Force local mtime to 2026-04-24 (the OLD simplified IBGE publication)
+  Sys.setFileTime(fpath, as.POSIXct("2026-04-24 10:00", tz = "UTC"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  # FTP has the NEW republication from 2026-05-08
+  remote <- list(
+    "1" = data.table::data.table(
+      filename = "PNADC_2025_visita1_20260508.zip",
+      last_modified = as.POSIXct("2026-05-08 10:00", tz = "UTC"),
+      size_bytes = 1.9e8, year = 2025L, visit = 1L,
+      upstream_date = "20260508"
+    )
+  )
+
+  plan <- plan_acervo_actions(
+    file_type = "annual",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = NULL  # empty sidecar
+  )
+  expect_equal(plan$status, "OUTDATED")
+  expect_match(plan$reason, "bootstrap.*Last-Modified")
+  # Upstream identity captured so apply step can rename + redownload
+  expect_equal(plan$upstream_filename, "PNADC_2025_visita1_20260508.zip")
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("bootstrap: local mtime within 1d of FTP Last-Modified => OK (no false positive)", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  fpath <- file.path(tmp, "pnadc_2024-1q.fst")
+  writeLines("x", fpath)
+  # local mtime exactly 12 hours before FTP last_modified — within epsilon
+  Sys.setFileTime(fpath, as.POSIXct("2025-08-14 22:00", tz = "UTC"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = NULL
+  )
+  expect_equal(plan$status, "OK")
+  expect_match(plan$reason, "bootstrap", fixed = TRUE)
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("bootstrap: missing FTP Last-Modified => OK (cannot compare, fallback)", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  writeLines("x", file.path(tmp, "pnadc_2024-1q.fst"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  # FTP entry exists but Last-Modified is NA (rare — server quirk)
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct(NA, tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = NULL
+  )
+  expect_equal(plan$status, "OK")
+  expect_match(plan$reason, "bootstrap", fixed = TRUE)
+
+  unlink(tmp, recursive = TRUE)
+})
+
+# -----------------------------------------------------------------------------
+# Phase 3: detect schema drift in local .fst when required_vars expanded
+# (e.g. VD4016 added to quarterly_required_vars on 2026-05-04 — old .fst
+# files don't have the new column; pipeline must detect and re-download).
+# -----------------------------------------------------------------------------
+
+# Helper: write a tiny but valid .fst file with the given columns
+.write_test_fst <- function(path, columns) {
+  d <- data.table::as.data.table(setNames(
+    lapply(columns, function(.) integer(1L)),
+    columns
+  ))
+  fst::write_fst(d, path, compress = 50)
+}
+
+test_that("schema drift bootstrap: local lacks required column => OUTDATED", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  fpath <- file.path(tmp, "pnadc_2024-1q.fst")
+  # OLD-schema .fst: lacks VD4016
+  .write_test_fst(fpath, c("Ano","Trimestre","UPA","V1008","V2009"))
+  Sys.setFileTime(fpath, as.POSIXct("2026-04-25 20:00", tz = "UTC"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = NULL,
+    required_vars = c("Ano","Trimestre","UPA","V1008","V2009","VD4016")
+  )
+  expect_equal(plan$status, "OUTDATED")
+  expect_match(plan$reason, "schema drift", ignore.case = TRUE)
+  expect_match(plan$reason, "VD4016")
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("schema OK: local has all required columns => OK", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  fpath <- file.path(tmp, "pnadc_2024-1q.fst")
+  .write_test_fst(fpath, c("Ano","Trimestre","UPA","V1008","V2009","VD4016"))
+  Sys.setFileTime(fpath, as.POSIXct("2026-04-25 20:00", tz = "UTC"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = NULL,
+    required_vars = c("Ano","Trimestre","UPA","V1008","V2009","VD4016")
+  )
+  expect_equal(plan$status, "OK")
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("schema drift normal: sidecar with stale required_vars_hash => OUTDATED", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  fpath <- file.path(tmp, "pnadc_2024-1q.fst")
+  .write_test_fst(fpath, c("Ano","Trimestre","UPA","V1008","V2009"))  # no VD4016
+  Sys.setFileTime(fpath, as.POSIXct("2026-04-25 20:00", tz = "UTC"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  # Sidecar entry exists with OLD required_vars_hash (no VD4016)
+  old_required <- c("Ano","Trimestre","UPA","V1008","V2009")
+  sidecar <- list(
+    "pnadc_2024-1q.fst" = list(
+      upstream_filename = "PNADC_012024.zip",
+      upstream_last_modified = "2025-08-15T10:00:00Z",
+      actual_columns = old_required,
+      required_vars_hash = digest::digest(sort(old_required))
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = sidecar,
+    required_vars = c(old_required, "VD4016")  # expanded
+  )
+  expect_equal(plan$status, "OUTDATED")
+  expect_match(plan$reason, "schema drift", ignore.case = TRUE)
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("schema drift already tried: same required_vars_hash, still missing => OK (no loop)", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  fpath <- file.path(tmp, "pnadc_2024-1q.fst")
+  .write_test_fst(fpath, c("Ano","Trimestre","UPA","V1008","V2009"))  # no VD4016
+  Sys.setFileTime(fpath, as.POSIXct("2026-05-10 12:00", tz = "UTC"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  # Sidecar already records: "tried with current required_vars, IBGE doesn't have VD4016"
+  current_required <- c("Ano","Trimestre","UPA","V1008","V2009","VD4016")
+  sidecar <- list(
+    "pnadc_2024-1q.fst" = list(
+      upstream_filename = "PNADC_012024.zip",
+      upstream_last_modified = "2025-08-15T10:00:00Z",
+      actual_columns = c("Ano","Trimestre","UPA","V1008","V2009"),  # without VD4016
+      required_vars_hash = digest::digest(sort(current_required))
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = sidecar,
+    required_vars = current_required
+  )
+  expect_equal(plan$status, "OK")
+  expect_match(plan$reason, "already attempted", ignore.case = TRUE)
+
+  unlink(tmp, recursive = TRUE)
+})
+
+test_that("schema OK: required_vars=NULL preserves backward-compat (no schema check)", {
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  # writeLines (text file, NOT a real .fst) — schema check would fail to read.
+  # With required_vars=NULL the plan must NOT attempt fst::metadata_fst.
+  writeLines("x", file.path(tmp, "pnadc_2024-1q.fst"))
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly",
+    expected = expected,
+    local_inventory = inv,
+    remote_catalog = remote,
+    catalog_sidecar = NULL
+    # required_vars omitted → defaults to NULL
+  )
+  expect_equal(plan$status, "OK")
+
+  unlink(tmp, recursive = TRUE)
+})
+
 test_that("OK when sidecar matches remote (filename + Last-Modified)", {
   source_pipeline_R()
   expected <- list_expected_quarters(2024L, 1L)
@@ -556,6 +854,53 @@ test_that("ensure_quarterly_deflators_downloaded calls download_fn and syncs", {
                                                download_fn = fake_download)
   expect_true(dir.exists(out))
   expect_true(file.exists(file.path(out, "deflator_PNADC_2025_trimestral_z.xls")))
+})
+
+test_that("apply_acervo_plan persists bootstrap-OK rows to sidecar (regression: <<- vs <- bug)", {
+  # Earlier version used `sidecar <<- update_acervo_sidecar(...)` inside the
+  # bootstrap loop. `<<-` searches the parent scope (globalenv), not the
+  # function's parameter frame — so the LOCAL `sidecar` was never updated
+  # and `save_acervo_sidecar(sidecar, sidecar_path)` always wrote `[]`.
+  source_pipeline_R()
+  expected <- list_expected_quarters(2024L, 1L)
+  expected <- expected[year == 2024L]
+  tmp <- tempfile(); dir.create(tmp)
+  fpath <- file.path(tmp, "pnadc_2024-1q.fst")
+  writeLines("x", fpath)
+  inv <- inventory_local(tmp, "^pnadc_.*\\.fst$")
+
+  remote <- list(
+    "2024" = data.table::data.table(
+      filename = "PNADC_012024.zip",
+      last_modified = as.POSIXct("2025-08-15 10:00", tz = "UTC"),
+      size_bytes = 2.1e8, year = 2024L, quarter = 1L,
+      upstream_date = NA_character_
+    )
+  )
+  plan <- plan_acervo_actions(
+    file_type = "quarterly", expected = expected,
+    local_inventory = inv, remote_catalog = remote,
+    catalog_sidecar = NULL  # empty sidecar
+  )
+  expect_equal(plan$status, "OK")  # bootstrap classified as OK
+
+  sidecar_path <- file.path(tmp, ".acervo_catalog.json")
+  result <- apply_acervo_plan(
+    plan = plan,
+    file_type = "quarterly",
+    dest_dir = tmp,
+    sidecar = list(),
+    sidecar_path = sidecar_path
+  )
+
+  expect_true(file.exists(sidecar_path))
+  saved <- jsonlite::read_json(sidecar_path, simplifyVector = FALSE)
+  expect_length(saved, 1L)
+  expect_true("pnadc_2024-1q.fst" %in% names(saved))
+  expect_equal(saved[["pnadc_2024-1q.fst"]]$upstream_filename,
+               "PNADC_012024.zip")
+
+  unlink(tmp, recursive = TRUE)
 })
 
 test_that("apply_acervo_plan honours dry-run (no downloads, status preserved)", {

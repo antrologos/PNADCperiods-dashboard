@@ -11,14 +11,7 @@
 #   5. build_prepared_microdata: select dashboard cols, write .fst
 
 #' Thin writer: select dashboard-relevant columns from `annual_recoded` and
-#' write `prepared_microdata.fst`.
-#'
-#' PR4: this function used to load the annual stack, apply_periods, V2005
-#' filter, deflate, build pc_income components, build demographic groupings.
-#' All of that moved to dedicated targets:
-#'   stack_annual → annual_stacked  (tar-stack.R)
-#'   recode_annual → annual_recoded (tar-recode.R)
-#' This is now just a writer that materialises the .fst cache for external
+#' write `prepared_microdata.fst`. Materialises the .fst cache for external
 #' consumers (legacy scripts, dashboard offline mode, Phase 5 equivalence).
 #'
 #' @param annual_recoded data.table from `recode_annual`
@@ -104,8 +97,8 @@ deflate_incomes <- function(d, ipca_table) {
   data.table::setattr(d, "T_ref_habitual", res_hab$T_ref)
   data.table::setattr(d, "T_ref_efetivo",  res_efe$T_ref)
 
-  message(sprintf("IPCA deflation: T_ref habitual=%d, efetivo=%d",
-                  res_hab$T_ref, res_efe$T_ref))
+  message("IPCA deflation: T_ref habitual=", res_hab$T_ref,
+          ", efetivo=", res_efe$T_ref)
 
   # Years with the full income module: keep legacy behaviour (NA -> 0).
   # Years flagged as simplified (e.g. PNADC anual 2025 visita 1) lack
@@ -254,6 +247,35 @@ build_demographic_groupings <- function(d) {
   d
 }
 
+# Shared full-measure set used by both build_inequality_outputs and
+# build_quarterly_income_outputs. Resolves weighted_gini, palma_ratio, etc.
+# at call time from the globalenv populated by source(measures_inequality_path)
+# inside each caller.
+compute_full_measures <- function(x, w) {
+  keep <- !is.na(x) & !is.na(w) & w > 0
+  x_k <- x[keep]; w_k <- w[keep]
+  list(
+    gini           = weighted_gini(x, w),
+    palma          = palma_ratio(x, w),
+    p90p10         = percentile_ratio(x, w, 0.9, 0.1),
+    p90p50         = percentile_ratio(x, w, 0.9, 0.5),
+    p50p10         = percentile_ratio(x, w, 0.5, 0.1),
+    top1_share     = top_share(x, w, 1),
+    top5_share     = top_share(x, w, 5),
+    top10_share    = top_share(x, w, 10),
+    bottom50_share = bottom_share(x, w, 50),
+    mean           = if (sum(w, na.rm = TRUE) > 0)
+      sum(x * w, na.rm = TRUE) / sum(w, na.rm = TRUE) else NA_real_,
+    min            = if (length(x_k) > 0) min(x_k)    else NA_real_,
+    p10            = weighted_quantile(x, w, probs = 0.1),
+    p25            = weighted_quantile(x, w, probs = 0.25),
+    median         = weighted_quantile(x, w, probs = 0.5),
+    p75            = weighted_quantile(x, w, probs = 0.75),
+    p90            = weighted_quantile(x, w, probs = 0.9),
+    max            = if (length(x_k) > 0) max(x_k)    else NA_real_
+  )
+}
+
 # ------------------------------------------------------------------------------
 # Layer 3 — quarterly individual labor income aggregates
 # ------------------------------------------------------------------------------
@@ -299,34 +321,10 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
     list(type = "age_group",    col = "faixa_idade")
   )
 
-  # Phase 2-6: full set of measures (matches build_inequality_outputs).
   # Sample restricted to people with positive labor income for THIS
   # specific income_var via the pre-filter `d_iv` below — Gini/Palma
   # of "individual labor income" naturally exclude non-workers.
-  measures_fn <- function(x, w) {
-    keep <- !is.na(x) & !is.na(w) & w > 0
-    x_k <- x[keep]; w_k <- w[keep]
-    list(
-      gini           = weighted_gini(x, w),
-      palma          = palma_ratio(x, w),
-      p90p10         = percentile_ratio(x, w, 0.9, 0.1),
-      p90p50         = percentile_ratio(x, w, 0.9, 0.5),
-      p50p10         = percentile_ratio(x, w, 0.5, 0.1),
-      top1_share     = top_share(x, w, 1),
-      top5_share     = top_share(x, w, 5),
-      top10_share    = top_share(x, w, 10),
-      bottom50_share = bottom_share(x, w, 50),
-      mean           = if (sum(w, na.rm = TRUE) > 0)
-        sum(x * w, na.rm = TRUE) / sum(w, na.rm = TRUE) else NA_real_,
-      min            = if (length(x_k) > 0) min(x_k)    else NA_real_,
-      p10            = weighted_quantile(x, w, probs = 0.1),
-      p25            = weighted_quantile(x, w, probs = 0.25),
-      median         = weighted_quantile(x, w, probs = 0.5),
-      p75            = weighted_quantile(x, w, probs = 0.75),
-      p90            = weighted_quantile(x, w, probs = 0.9),
-      max            = if (length(x_k) > 0) max(x_k)    else NA_real_
-    )
-  }
+  # Full measure set shared with build_inequality_outputs (compute_full_measures).
 
   shares_specs <- breakdown_specs[
     vapply(breakdown_specs, function(s) s$type != "uf", logical(1L))]
@@ -348,7 +346,7 @@ build_quarterly_income_outputs <- function(quarterly_recoded,
     d_iv <- d[!is.na(get(vname)) & get(vname) > 0]
     if (!nrow(d_iv)) next
 
-    one_ineq <- compute_breakdowns(d_iv, breakdown_specs, measures_fn,
+    one_ineq <- compute_breakdowns(d_iv, breakdown_specs, compute_full_measures,
                                    income_col = vname)
     if (nrow(one_ineq)) {
       one_ineq[, income_var := income_var_code]
@@ -461,35 +459,9 @@ build_inequality_outputs <- function(prepared_microdata_path,
                   "other_programs", "unemployment_insurance", "rental", "other")
   )
 
-  # Phase 2-3+2-4: rename mean_income/median_income → mean/median (uniform
-  # key names across the annual and quarterly income assets). Phase 2-4
-  # also adds 6 percentile measures: min (p≈0), p10, p25, p75, p90, max
-  # (p≈1). All use the same weighted_quantile helper so n_obs filters
-  # remain meaningful.
-  measures_fn <- function(x, w) {
-    keep <- !is.na(x) & !is.na(w) & w > 0
-    x_k <- x[keep]; w_k <- w[keep]
-    list(
-      gini           = weighted_gini(x, w),
-      palma          = palma_ratio(x, w),
-      p90p10         = percentile_ratio(x, w, 0.9, 0.1),
-      p90p50         = percentile_ratio(x, w, 0.9, 0.5),
-      p50p10         = percentile_ratio(x, w, 0.5, 0.1),
-      top1_share     = top_share(x, w, 1),
-      top5_share     = top_share(x, w, 5),
-      top10_share    = top_share(x, w, 10),
-      bottom50_share = bottom_share(x, w, 50),
-      mean           = if (sum(w, na.rm = TRUE) > 0)
-        sum(x * w, na.rm = TRUE) / sum(w, na.rm = TRUE) else NA_real_,
-      min            = if (length(x_k) > 0) min(x_k)    else NA_real_,
-      p10            = weighted_quantile(x, w, probs = 0.1),
-      p25            = weighted_quantile(x, w, probs = 0.25),
-      median         = weighted_quantile(x, w, probs = 0.5),
-      p75            = weighted_quantile(x, w, probs = 0.75),
-      p90            = weighted_quantile(x, w, probs = 0.9),
-      max            = if (length(x_k) > 0) max(x_k)    else NA_real_
-    )
-  }
+  # Full measure set (Gini/Palma/percentile ratios/top-bottom shares/
+  # quantiles/mean/min/max) shared with build_quarterly_income_outputs via
+  # compute_full_measures.
 
   # PR6: vectorized via data.table by-group sweeps. The 4 sub-functions
   # (compute_breakdowns, compute_shares, compute_lorenz, compute_gini_decomp)
@@ -506,7 +478,7 @@ build_inequality_outputs <- function(prepared_microdata_path,
   )
 
   ineq_parts <- lapply(hh_income_vars, function(iv) {
-    one <- compute_breakdowns(d, breakdown_specs, measures_fn,
+    one <- compute_breakdowns(d, breakdown_specs, compute_full_measures,
                               income_col = iv$col)
     if (!nrow(one)) return(NULL)
     one[, income_var := iv$code]
@@ -840,32 +812,35 @@ build_poverty_outputs <- function(prepared_microdata_path,
 
   out <- list()
   k <- 0L
+  if (!nrow(d)) {
+    poverty_lines <- list()  # short-circuit; downstream still rbinds empty
+  }
   for (iv in income_specs) {
     income_col <- iv$col
     for (line_name in names(poverty_lines)) {
-      pline <- poverty_lines[[line_name]]
-      d_z <- data.table::copy(d)
-      d_z[, z := pline$value]
-      if (!nrow(d_z)) next
+      z_val <- poverty_lines[[line_name]]$value
+      # fgt_all() accepts a scalar z and broadcasts to length(x), so the
+      # original `d_z <- copy(d); d_z[, z := z_val]` is unnecessary —
+      # 48 copies of d (~280 MB each) avoided per build_poverty_outputs run.
       for (sp in breakdown_specs) {
         if (sp$type == "overall") {
-          res <- d_z[, {
-            fgt <- fgt_all(get(income_col), z, weight_monthly)
+          res <- d[, {
+            fgt <- fgt_all(get(income_col), z_val, weight_monthly)
             list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
                  n_poor = fgt$n_poor, total_pop = fgt$total_pop,
                  mean_income_poor = fgt$mean_income_poor,
-                 poverty_line_value = z[1L], n_obs = .N)
+                 poverty_line_value = z_val, n_obs = .N)
           }, by = .(ref_month_yyyymm)]
           res[, breakdown_type := "overall"]
           res[, breakdown_value := "Nacional"]
         } else {
           bcol <- sp$col
-          res <- d_z[!is.na(get(bcol)), {
-            fgt <- fgt_all(get(income_col), z, weight_monthly)
+          res <- d[!is.na(get(bcol)), {
+            fgt <- fgt_all(get(income_col), z_val, weight_monthly)
             list(fgt0 = fgt$fgt0, fgt1 = fgt$fgt1, fgt2 = fgt$fgt2,
                  n_poor = fgt$n_poor, total_pop = fgt$total_pop,
                  mean_income_poor = fgt$mean_income_poor,
-                 poverty_line_value = z[1L], n_obs = .N)
+                 poverty_line_value = z_val, n_obs = .N)
           }, by = c("ref_month_yyyymm", bcol)]
           data.table::setnames(res, bcol, "breakdown_value")
           res[, breakdown_type := sp$type]

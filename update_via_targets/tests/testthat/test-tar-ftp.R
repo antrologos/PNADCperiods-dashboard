@@ -94,8 +94,19 @@ test_that("parse_ibge_directory_listing: empty/malformed input => empty data.tab
   expect_equal(nrow(parse_ibge_directory_listing("<html>no rows</html>")), 0L)
 })
 
-test_that(".parse_apache_size handles K/M/G suffixes and dash", {
-  expect_equal(.parse_apache_size(c("204M", "108K", "7.5K", "-")),
+test_that("parse_ibge_directory_listing parses K/M/G size suffixes and dash", {
+  mk_row <- function(name, size) sprintf(
+    paste0('<tr><td valign="top"><img src="/icons/x.gif" alt="[ZIP]"></td>',
+           '<td><a href="%s">%s</a></td>',
+           '<td align="right">2024-01-01 00:00  </td>',
+           '<td align="right">%s</td><td>&nbsp;</td></tr>'),
+    name, name, size)
+  html <- paste0(mk_row("a.zip", "204M"),
+                 mk_row("b.zip", "108K"),
+                 mk_row("c.zip", "7.5K"),
+                 mk_row("d.zip", "-"))
+  res <- parse_ibge_directory_listing(html)
+  expect_equal(res$size_bytes,
                c(204 * 1024^2, 108 * 1024, 7.5 * 1024, NA_real_))
 })
 

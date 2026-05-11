@@ -90,38 +90,36 @@ parse_ibge_directory_listing <- function(html) {
   keep2 <- !grepl("^/", hrefs) & !grepl("^https?://", hrefs)
   if (!any(keep2)) return(empty)
 
+  # Parse Apache date "YYYY-MM-DD HH:MM" -> POSIXct
+  d <- dates[keep2]
+  last_modified <- as.POSIXct(rep(NA_real_, length(d)), tz = "UTC")
+  ok_d <- !is.na(d) & nzchar(d)
+  if (any(ok_d)) {
+    last_modified[ok_d] <- as.POSIXct(trimws(d[ok_d]),
+                                       format = "%Y-%m-%d %H:%M", tz = "UTC")
+  }
+
+  # Parse Apache human size "204M" / "108K" / "7.5K" / "293" -> numeric bytes
+  s <- sizes[keep2]
+  size_bytes <- rep(NA_real_, length(s))
+  ok_s <- !is.na(s) & s != "-" & nzchar(trimws(s))
+  if (any(ok_s)) {
+    ss <- trimws(s[ok_s])
+    unit <- toupper(sub("^[0-9.]+", "", ss))
+    num  <- as.numeric(sub("[KMG]$", "", ss, ignore.case = TRUE))
+    mult <- ifelse(unit == "K", 1024,
+            ifelse(unit == "M", 1024^2,
+            ifelse(unit == "G", 1024^3, 1)))
+    size_bytes[ok_s] <- num * mult
+  }
+  size_bytes[is_dir[keep2]] <- NA_real_
+
   data.table::data.table(
     filename = hrefs[keep2],
-    last_modified = .parse_apache_date(dates[keep2]),
-    size_bytes = ifelse(is_dir[keep2], NA_real_,
-                         .parse_apache_size(sizes[keep2])),
+    last_modified = last_modified,
+    size_bytes = size_bytes,
     is_dir = is_dir[keep2]
   )
-}
-
-# Parse Apache date "YYYY-MM-DD HH:MM" -> POSIXct
-.parse_apache_date <- function(x) {
-  out <- as.POSIXct(rep(NA_real_, length(x)), tz = "UTC")
-  ok <- !is.na(x) & nzchar(x)
-  if (any(ok)) {
-    out[ok] <- as.POSIXct(trimws(x[ok]), format = "%Y-%m-%d %H:%M", tz = "UTC")
-  }
-  out
-}
-
-# Parse Apache human size "204M" / "108K" / "7.5K" / "293" -> numeric bytes
-.parse_apache_size <- function(x) {
-  out <- rep(NA_real_, length(x))
-  ok <- !is.na(x) & x != "-" & nzchar(trimws(x))
-  if (!any(ok)) return(out)
-  s <- trimws(x[ok])
-  unit <- toupper(sub("^[0-9.]+", "", s))
-  num  <- as.numeric(sub("[KMG]$", "", s, ignore.case = TRUE))
-  mult <- ifelse(unit == "K", 1024,
-          ifelse(unit == "M", 1024^2,
-          ifelse(unit == "G", 1024^3, 1)))
-  out[ok] <- num * mult
-  out
 }
 
 # ------------------------------------------------------------------------------
@@ -357,20 +355,7 @@ fetch_ibge_ftp_catalog <- function(state_path = NULL, timeout = 30L) {
 
 .save_catalog_state <- function(catalog, path) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  # Convert data.tables to plain lists for JSON
-  serializable <- .catalog_to_serializable(catalog)
-  jsonlite::write_json(serializable, path, auto_unbox = TRUE,
-                       pretty = TRUE, na = "string", null = "null",
-                       force = TRUE)
-  invisible(path)
-}
-
-.load_catalog_state <- function(path) {
-  raw <- jsonlite::read_json(path, simplifyVector = FALSE)
-  .catalog_from_serializable(raw)
-}
-
-.catalog_to_serializable <- function(catalog) {
+  # Convert data.tables to plain lists for JSON; stringify POSIXct as UTC ISO.
   conv <- function(x) {
     if (data.table::is.data.table(x)) {
       x_copy <- data.table::copy(x)
@@ -382,7 +367,7 @@ fetch_ibge_ftp_catalog <- function(state_path = NULL, timeout = 30L) {
     }
     x
   }
-  list(
+  serializable <- list(
     fetched_at = catalog$fetched_at,
     fetched_ok = catalog$fetched_ok,
     trimestral = list(
@@ -394,9 +379,15 @@ fetch_ibge_ftp_catalog <- function(state_path = NULL, timeout = 30L) {
       deflator = conv(catalog$anual$deflator)
     )
   )
+  jsonlite::write_json(serializable, path, auto_unbox = TRUE,
+                       pretty = TRUE, na = "string", null = "null",
+                       force = TRUE)
+  invisible(path)
 }
 
-.catalog_from_serializable <- function(raw) {
+.load_catalog_state <- function(path) {
+  raw <- jsonlite::read_json(path, simplifyVector = FALSE)
+  # Reverse: list -> data.table; parse last_modified back to POSIXct UTC.
   rev <- function(x) {
     if (is.null(x) || !length(x)) return(NULL)
     dt <- data.table::as.data.table(x)
