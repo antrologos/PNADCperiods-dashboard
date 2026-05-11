@@ -60,9 +60,13 @@ deseasonalize_long_table <- function(data,
       new_col <- paste0(vc, "_", m)
       data[, (new_col) := {
         values <- get(vc)
-        time_v <- get(time_col)
-        if (length(values) == 0L) numeric(0)
+        # Groups shorter than 24 obs: deseasonalize_x13/_stl already
+        # return `values` unchanged (utils_deseasonalize.R:48 and :167-170).
+        # Short-circuit here to skip per-group order/as.Date/fn-dispatch
+        # overhead. Byte-identical output.
+        if (.N < 24L) values
         else {
+          time_v <- get(time_col)
           ord <- order(time_v)
           v_ord <- values[ord]
           t_ord <- time_v[ord]
