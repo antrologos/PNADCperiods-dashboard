@@ -25,6 +25,51 @@ load_deseasonalize_helpers <- function(utils_path = NULL) {
   if (is.null(w) || is.na(w) || w < 1L) 1L else as.integer(w)
 }
 
+# Disk cache for deseasonalized vectors (opt-in). When enabled, the cached
+# result of fn(values, dates) is keyed by digest(method + values + dates)
+# under <PNADC_PROCESSED_DIR>/x13_cache/. X-13 and STL are deterministic
+# given the same inputs, so a cache hit returns byte-identical output.
+# Enable: Sys.setenv(PNADC_X13_CACHE = "1") or options(pnadc.x13.cache = TRUE).
+# Useful for dev / re-runs where the IPCA-deflated inputs are unchanged;
+# in production the first run after a new IPCA T_ref will miss every key
+# (different inputs), so leave OFF unless re-running with stable inputs.
+.x13_cache_enabled <- function() {
+  e <- Sys.getenv("PNADC_X13_CACHE", "")
+  isTRUE(getOption("pnadc.x13.cache")) ||
+    e == "1" || tolower(e) == "true"
+}
+
+.x13_cache_dir <- function() {
+  d <- Sys.getenv("PNADC_PROCESSED_DIR", "")
+  if (!nzchar(d)) return(NULL)
+  file.path(d, "x13_cache")
+}
+
+# Wrap a deseasonalize call with a disk cache. If the cache is disabled or
+# unavailable, falls through to fn(values, dates) unchanged.
+.cached_deseason <- function(fn, values, dates, method_tag) {
+  if (!.x13_cache_enabled()) return(fn(values, dates))
+  cache_dir <- .x13_cache_dir()
+  if (is.null(cache_dir)) return(fn(values, dates))
+
+  key <- digest::digest(list(method_tag, values, dates))
+  cache_file <- file.path(cache_dir, paste0(key, ".rds"))
+
+  if (file.exists(cache_file)) {
+    # Partial writes or schema drift fall through to a fresh compute.
+    cached <- tryCatch(readRDS(cache_file), error = function(e) NULL)
+    if (is.numeric(cached) && length(cached) == length(values)) {
+      return(cached)
+    }
+  }
+  result <- fn(values, dates)
+  if (is.numeric(result) && length(result) == length(values)) {
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    tryCatch(saveRDS(result, cache_file), error = function(e) NULL)
+  }
+  result
+}
+
 #' Add X-13 and STL deseasonalized columns to a long-format data.table
 #'
 #' For each name in `value_cols`, two new columns are appended: `<col>_x13`
@@ -71,12 +116,13 @@ deseasonalize_long_table <- function(data,
   workers <- .x13_workers()
 
   if (workers == 1L) {
-    # Serial path (B6 short-circuit on .N < 24L).
+    # Serial path (B6 short-circuit on .N < 24L, B8 optional disk cache).
     for (m in methods) {
       fn <- switch(m,
                    x13 = get("deseasonalize_x13", envir = globalenv()),
                    stl = get("deseasonalize_stl", envir = globalenv()),
                    stop("Unknown method: ", m, call. = FALSE))
+      method_tag <- m
       for (vc in value_cols) {
         new_col <- paste0(vc, "_", m)
         data[, (new_col) := {
@@ -89,7 +135,8 @@ deseasonalize_long_table <- function(data,
             t_ord <- time_v[ord]
             d_ord <- as.Date(sprintf("%d-%02d-01",
                                       t_ord %/% 100L, t_ord %% 100L))
-            adj_ord <- suppressWarnings(fn(v_ord, d_ord))
+            adj_ord <- suppressWarnings(
+              .cached_deseason(fn, v_ord, d_ord, method_tag))
             if (length(adj_ord) != length(values)) values
             else {
               out <- rep(NA_real_, length(values))
@@ -124,7 +171,8 @@ deseasonalize_long_table <- function(data,
 
   parallel::clusterExport(cl,
     varlist = c("utils_deseasonalize_path", "methods",
-                "value_cols", "time_col", "ROW_IDX"),
+                "value_cols", "time_col", "ROW_IDX",
+                ".cached_deseason", ".x13_cache_enabled", ".x13_cache_dir"),
     envir = environment())
   parallel::clusterEvalQ(cl, {
     # Isolated TMPDIR per worker — X-13 binary writes temp files there.
@@ -160,7 +208,8 @@ deseasonalize_long_table <- function(data,
         new_col <- paste0(vc, "_", m)
         values <- g[[vc]]
         v_ord <- values[ord]
-        adj_ord <- suppressWarnings(fn(v_ord, d_ord))
+        adj_ord <- suppressWarnings(
+          .cached_deseason(fn, v_ord, d_ord, m))
         if (length(adj_ord) != length(values)) {
           out[, (new_col) := values]
         } else {
