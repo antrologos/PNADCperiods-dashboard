@@ -85,3 +85,6 @@ scripts/validation_results.csv
 CLAUDE.md
 ARCHITECTURE_PLAN.md
 .claude/
+
+# Local analysis scratch (gigabytes; never belongs in git)
+analise/

@@ -963,11 +963,17 @@ build_brazil_states_sf <- function(brazil_states_sf_raw, dest_path) {
   states_simple <- rmapshaper::ms_simplify(brazil_states_sf_raw,
                                            keep = 0.01, keep_shapes = TRUE)
   states_simple <- sf::st_transform(states_simple, 4326)
+  # geobr renamed the geometry column from `geom` to `geometry` in 2.0.0;
+  # ask sf for whatever it is called rather than hardcoding either name.
+  geom_col <- attr(states_simple, "sf_column")
   states_simple <- states_simple[, c("code_state", "abbrev_state",
-                                     "name_state", "geom")]
+                                     "name_state", geom_col)]
   names(states_simple) <- c("uf_code", "uf_abbrev", "uf_name", "geometry")
   states_simple$uf_code <- as.character(as.integer(states_simple$uf_code))
   sf::st_geometry(states_simple) <- "geometry"
+  # geobr 2.0 returns a tibble; keep the stored object a plain sf
+  # data.frame, which is what every consumer has seen so far.
+  states_simple <- sf::st_as_sf(as.data.frame(states_simple))
 
   saveRDS_atomic(states_simple, dest_path)
   attr(dest_path, "n_rows") <- nrow(states_simple)

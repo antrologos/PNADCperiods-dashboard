@@ -161,10 +161,28 @@ fetch_ipca_series <- function(max_retries = 3) {
 #' wrapper exists so targets can detect a network failure with a clear target
 #' name and so subsequent runs reuse the cached value.
 #'
+#' Requires geobr >= 2.0.0. Up to 1.9.x this call pulled 27 separate
+#' `.gpkg` files concurrently from www.ipea.gov.br, which throttles
+#' simultaneous connections per IP and dropped part of the burst; geobr
+#' treats a partial download as a total failure and returns
+#' `invisible(NULL)`, so the target failed intermittently for reasons that
+#' looked random. 2.0.0 replaced that with a single `.parquet` download and
+#' the problem is gone.
+#'
+#' The NULL guard stays because `read_state()` still signals some failures
+#' by returning NULL rather than erroring, and this target exists precisely
+#' so a network failure surfaces here, by name, instead of leaking a NULL
+#' downstream.
+#'
 #' @param year integer year passed to `geobr::read_state`
 #' @return sf object with 27 features (states)
 fetch_brazil_states_sf <- function(year = 2020L) {
-  geobr::read_state(year = year, simplified = TRUE)
+  states <- geobr::read_state(year = year, simplified = TRUE)
+  if (is.null(states)) {
+    stop("fetch_brazil_states_sf: geobr::read_state returned NULL.",
+         call. = FALSE)
+  }
+  states
 }
 
 # ------------------------------------------------------------------------------

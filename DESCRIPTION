@@ -30,7 +30,7 @@ Imports:
 Suggests:
     seasonal,
     forecast,
-    geobr,
+    geobr (>= 2.0.0),
     ineq,
     deflateBR,
     openxlsx
