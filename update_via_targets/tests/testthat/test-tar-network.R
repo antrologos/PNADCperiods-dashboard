@@ -57,6 +57,36 @@ test_that("compute_inpc_factors returns data.table with required nominal dates",
   expect_gt(f_2022, f_2024)  # 2022 needs more inflation to reach 12/2025
 })
 
+test_that("fetch_ipca_series returns the Dec/1993-based index by month", {
+  source_pipeline_R()
+  skip_if_not_installed("PNADCperiods")
+  skip_if_offline()
+
+  out <- tryCatch(fetch_ipca_series(max_retries = 2L),
+                  error = function(e) skip(paste("SIDRA unavailable:",
+                                                 conditionMessage(e))))
+
+  expect_s3_class(out, "data.table")
+  expect_named(out, c("yyyymm", "ipca_index"))
+  expect_type(out$yyyymm, "integer")
+  expect_true(all(is.finite(out$ipca_index)))
+
+  # One row per month, no duplicates: a mistranslated request would bring
+  # extra rows and silently double every period.
+  expect_false(anyDuplicated(out$yyyymm) > 0)
+
+  # The series covers Jan 1994 and must reach the recent past.
+  expect_true(199401L %in% out$yyyymm)
+  expect_gte(max(out$yyyymm), 202601L)
+
+  # Base is Dec/1993 = 100. The index is not monotonic -- Brazil had
+  # months of deflation -- but it grows by orders of magnitude over the
+  # period, driven by the mid-1990s hyperinflation.
+  expect_gt(out[yyyymm == 199401L, ipca_index], 100)
+  expect_gt(out[yyyymm == max(yyyymm), ipca_index],
+            10 * out[yyyymm == 199401L, ipca_index])
+})
+
 test_that("fetch_brazil_states_sf returns sf with 27 features", {
   source_pipeline_R()
   skip_if_not_installed("geobr")
