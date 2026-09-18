@@ -34,9 +34,6 @@ tar_pipeline_packages <- c(
   "seasonal",
   "forecast",
 
-  # SIDRA (used only in offline-rebuild mode)
-  "sidrar",
-
   # Geospatial (brazil_states_sf)
   "sf",
   "geobr",
