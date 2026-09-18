@@ -7,6 +7,17 @@
 # This script fetches state-level (UF) labor market indicators from SIDRA
 # for the geographic visualization tab.
 #
+# FALLBACK ONLY. The geographic tab prefers data/state_monthly_data.rds,
+# which the update_via_targets pipeline builds from the microdata and which
+# carries genuine monthly estimates per UF. global.R only falls back to the
+# file written here when that one is missing.
+#
+# Why this is coarser: SIDRA publishes rolling-quarter (monthly) PNADC
+# estimates for Brazil only -- every "trimestral movel" table is N1. The
+# UF-level tables (4093, 4094) are plain quarterly, so this script emits
+# four observations per year, each stamped with its quarter's final month,
+# matching the anomesfinaltrimmovel convention the app reads.
+#
 # Output files:
 #   - data/geographic_data.rds
 #
@@ -31,28 +42,24 @@ cat("=== PNADCperiods Dashboard: Precompute Geographic Data ===\n\n")
 #' @param verbose Print progress messages
 #' @return data.table with results
 fetch_sidra <- function(api_path, verbose = TRUE) {
-  base_url <- "https://apisidra.ibge.gov.br/values"
-  url <- paste0(base_url, api_path)
-
   if (verbose) cat("  Fetching:", api_path, "\n")
 
+  # Goes through the PNADCperiods client so the project keeps a single
+  # SIDRA implementation. It translates these legacy apisidra paths to
+  # IBGE's aggregated-data API v3, which is what still answers:
+  # apisidra.ibge.gov.br has been behind a Cloudflare challenge since
+  # 2026-09-15. fetch_sidra_rolling_quarters() cannot serve this script
+  # because its metadata table only covers national (N1) series.
   tryCatch({
-    # Read JSON from SIDRA
-    response <- jsonlite::fromJSON(url, flatten = TRUE)
-
-    if (is.data.frame(response) && nrow(response) > 1) {
-      # First row is header, rest is data
-      header <- as.character(response[1, ])
-      data <- response[-1, , drop = FALSE]
-      names(data) <- header
-      return(as.data.table(data))
-    } else {
-      warning("No data returned from SIDRA")
-      return(NULL)
+    raw <- PNADCperiods:::.get_sidra_v3(api_path)
+    if (is.data.frame(raw) && nrow(raw) > 0) {
+      return(as.data.table(raw))
     }
+    warning("No data returned from SIDRA")
+    NULL
   }, error = function(e) {
     warning("Error fetching from SIDRA: ", e$message)
-    return(NULL)
+    NULL
   })
 }
 
@@ -70,9 +77,12 @@ geographic_series <- list(
     description = "Unemployment rate"
   ),
   taxapartic = list(
-    table_id = 4092,
+    # Table 4092 does not carry variable 4096 (it only has 1641, 4087,
+    # 4104 and 4105), so this request had always failed. Table 4093 does,
+    # at the same territorial level.
+    table_id = 4093,
     variable_id = 4096,
-    api_path = "/t/4092/n3/all/v/4096/p/all/d/v4096%201",
+    api_path = "/t/4093/n3/all/v/4096/p/all/d/v4096%201",
     description = "Labor force participation rate"
   ),
   nivelocup = list(
@@ -101,16 +111,16 @@ for (indicator_name in names(geographic_series)) {
 
   if (!is.null(dt) && nrow(dt) > 0) {
     # Process the data
-    # SIDRA returns columns:
+    # SIDRA labels the columns in Portuguese, with accents:
     # - "Unidade da Federacao (Codigo)" = UF code
     # - "Unidade da Federacao" = UF name
-    # - "Trimestre Movel (Codigo)" = Period code (YYYYMM)
+    # - "Trimestre (Codigo)" = quarter code (YYYYQ, e.g. 202601)
     # - "Valor" = Value
-
-    # Find the relevant columns (SIDRA column names vary)
-    uf_code_col <- names(dt)[grepl("Unidade.*Codigo|UF.*Codigo", names(dt),
-                                    ignore.case = TRUE)][1]
-    period_col <- names(dt)[grepl("Trimestre.*Codigo|Periodo.*Codigo",
+    # The patterns below stand in for the accented characters with `.`, so
+    # they match whatever encoding the response arrives in.
+    uf_code_col <- names(dt)[grepl("Unidade.*Federa.*C.*digo|UF.*C.*digo",
+                                    names(dt), ignore.case = TRUE)][1]
+    period_col <- names(dt)[grepl("Trimestre.*C.*digo|Per.*odo.*C.*digo",
                                    names(dt), ignore.case = TRUE)][1]
     value_col <- "Valor"
 
@@ -126,9 +136,17 @@ for (indicator_name in names(geographic_series)) {
     }
 
     if (!is.na(uf_code_col) && !is.na(period_col) && value_col %in% names(dt)) {
+      # These tables are quarterly: the period code is YYYYQ (202601 =
+      # first quarter of 2026). The app keys on a YYYYMM month, so each
+      # quarter is stamped with its final month (Q1 -> March, Q4 ->
+      # December), the same convention anomesfinaltrimmovel uses for a
+      # rolling quarter.
+      quarter_code <- as.integer(dt[[period_col]])
+      yyyymm <- (quarter_code %/% 100L) * 100L + (quarter_code %% 100L) * 3L
+
       result <- data.table(
         uf_code = as.integer(dt[[uf_code_col]]),
-        anomesfinaltrimmovel = as.integer(dt[[period_col]]),
+        anomesfinaltrimmovel = yyyymm,
         value = as.numeric(gsub(",", ".", dt[[value_col]])),
         indicator = indicator_name
       )
