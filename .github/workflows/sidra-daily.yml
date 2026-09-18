@@ -18,8 +18,9 @@ jobs:
   fetch:
     runs-on: ubuntu-latest
     # Plan target: 15 min. Bumped to 20 to absorb first-run pak cache miss
-    # without panicking; lower this back to 15 once the cache is warm.
-    timeout-minutes: 20
+    # without panicking, then to 25 once the fetch retries started firing
+    # for real (an unreachable API now costs three attempts plus backoff).
+    timeout-minutes: 25
 
     env:
       ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -49,6 +50,9 @@ jobs:
         # bypass installs them directly from RSPM and caches the lib.
         env:
           R_LIBS_USER: ${{ runner.temp }}/Library
+          # install_deps.R installs PNADCperiods from GitHub until 0.1.3
+          # reaches CRAN; without a token the API rate limit can bite.
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p "$R_LIBS_USER"
           Rscript .github/scripts/install_deps.R
@@ -81,7 +85,26 @@ jobs:
             echo "Refusing to rotate a non-healthy release."
             exit 0
           fi
-          # 2. Healthy: pull all .qs2 and rotate.
+          # 1b. Refuse to rotate a bundle data-prev already holds. While the
+          # fetch was failing, data-latest stayed frozen on a healthy bundle
+          # and the daily rotation kept copying it over, so data-prev ended
+          # up identical to data-latest and the one-day rollback was lost.
+          mkdir -p prev_prev
+          set +e
+          gh release download data-prev \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir prev_prev \
+            --pattern "sidra_log.json" --clobber
+          set -e
+          if [ -f prev_prev/sidra_log.json ]; then
+            latest_ts=$(jq -r '.fetched_at // ""' prev_assets/sidra_log.json)
+            prev_ts=$(jq -r '.fetched_at // ""' prev_prev/sidra_log.json)
+            if [ -n "$latest_ts" ] && [ "$latest_ts" = "$prev_ts" ]; then
+              echo "data-prev already holds this bundle ($latest_ts); nothing to rotate."
+              exit 0
+            fi
+          fi
+          # 2. Healthy and new: pull all .qs2 and rotate.
           gh release download data-latest \
             --repo "$GITHUB_REPOSITORY" \
             --dir prev_assets \
