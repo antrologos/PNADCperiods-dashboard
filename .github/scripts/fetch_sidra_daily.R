@@ -93,6 +93,9 @@ runlog <- list2env(list(
 ))
 
 write_log <- function() {
+  # A run that dies before Step 7 never sets a status; the public log must
+  # not go out claiming the fetch is still running.
+  if (identical(runlog$status, "running")) runlog$status <- "failed"
   runlog$duration_seconds <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
   out_path <- file.path(OUTDIR, "sidra_log.json")
   tryCatch(
@@ -141,14 +144,20 @@ tryCatch({
   qs2::qs_save(metadata, file.path(OUTDIR, "series_metadata.qs2"))
 
   # ---- Step 2: rolling quarters ----
+  # fetch_sidra_rolling_quarters() returns NULL rather than erroring when
+  # the API is unreachable (CRAN policy for internet resources), so the
+  # emptiness check has to live inside the retried closure. Outside it,
+  # with_retry() sees no error, never retries, and the job aborts on the
+  # first attempt with fetch_retry_count still at zero.
   cat("Step 2: fetch_sidra_rolling_quarters() (may take a few minutes)\n")
   rolling_quarters <- with_retry(
-    function() fetch_sidra_rolling_quarters(verbose = TRUE, use_cache = FALSE),
+    function() {
+      rq <- fetch_sidra_rolling_quarters(verbose = TRUE, use_cache = FALSE)
+      if (is.null(rq) || nrow(rq) == 0L) stop("fetcher returned no rows")
+      rq
+    },
     "fetch_rq"
   )
-  if (is.null(rolling_quarters) || nrow(rolling_quarters) == 0L) {
-    stop("[fetch_rq] returned empty data.table")
-  }
 
   # ---- Step 2.5: drop trailing all-NA-PNADC rows ----
   # When SIDRA publishes IPCA/INPC for a month before PNADC (typical in
