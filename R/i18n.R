@@ -208,6 +208,10 @@ translations <- list(
     last_updated = list(en = "Last updated", pt = "Última atualização"),
     data_through = list(en = "Data through %s", pt = "Dados até %s"),
     fetched_at = list(en = "Fetched at %s", pt = "Atualizado em %s"),
+    data_stale = list(
+      en = "not refreshed for %d days",
+      pt = "sem atualização há %d dias"
+    ),
     data_source_release = list(
       en = "Source: GitHub release (data-latest)",
       pt = "Fonte: release do GitHub (data-latest)"

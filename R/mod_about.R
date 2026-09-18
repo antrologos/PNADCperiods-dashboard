@@ -294,6 +294,17 @@ aboutServer <- function(id, shared_data, lang = reactive("pt")) {
                      tz = "America/Sao_Paulo")
         parts <- c(parts, sprintf(i18n("messages.fetched_at", lang_val),
                                   paste0(ts, " BRT")))
+
+        # The daily workflow runs every day, so a bundle older than three
+        # days means at least two runs in a row failed. Says nothing about
+        # IBGE's publication calendar -- that is what data_through shows.
+        age_days <- as.numeric(difftime(Sys.time(),
+                                        shared_data$sidra_fetched_at,
+                                        units = "days"))
+        if (is.finite(age_days) && age_days > 3) {
+          parts <- c(parts, sprintf(i18n("messages.data_stale", lang_val),
+                                    as.integer(floor(age_days))))
+        }
       }
       if (!is.null(shared_data$sidra_source)) {
         src_key <- if (identical(shared_data$sidra_source, "release"))
