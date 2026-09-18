@@ -107,19 +107,29 @@ read_deflator_xls <- function(deflator_path) {
 #'   variation) — same value applied to every observation in the
 #'   downstream deflation step.
 fetch_ipca_series <- function(max_retries = 3) {
-  api_path <- "/t/1737/n1/all/v/2266/p/all/d/v2266%2013"
+  # The series lives in the PNADCperiods metadata table as
+  # `ipca100dez1993`, whose api_path is exactly table 1737 / variable 2266
+  # with 13 decimals. Going through the package keeps a single SIDRA client
+  # in the project: since September 2026, apisidra.ibge.gov.br answers a
+  # Cloudflare challenge and the package fetches through IBGE's
+  # aggregated-data API v3 instead.
   attempt <- 1L
   raw <- NULL
   while (attempt <= max_retries) {
     raw <- tryCatch(
-      sidrar::get_sidra(api = api_path),
+      PNADCperiods::fetch_sidra_rolling_quarters(
+        series = "ipca100dez1993", use_cache = FALSE, verbose = FALSE
+      ),
       error = function(e) {
         message(sprintf("fetch_ipca_series: attempt %d failed: %s",
                         attempt, conditionMessage(e)))
         NULL
       }
     )
-    if (!is.null(raw)) break
+    # The fetcher returns NULL rather than erroring when SIDRA is
+    # unreachable, so an empty result counts as a failed attempt.
+    if (!is.null(raw) && nrow(raw) > 0L) break
+    raw <- NULL
     attempt <- attempt + 1L
     Sys.sleep(2)
   }
@@ -129,13 +139,11 @@ fetch_ipca_series <- function(max_retries = 3) {
   }
 
   data.table::setDT(raw)
-  # SIDRA returns "Mês (Código)" with values like "199401" (string).
-  mes_col <- grep("^M.s.*C.digo", names(raw), value = TRUE)
-  if (!length(mes_col))
-    stop("fetch_ipca_series: 'Mês (Código)' column not found", call. = FALSE)
+  if (!"ipca100dez1993" %in% names(raw))
+    stop("fetch_ipca_series: 'ipca100dez1993' column not found", call. = FALSE)
   out <- data.table::data.table(
-    yyyymm = as.integer(raw[[mes_col[1L]]]),
-    ipca_index = as.numeric(raw[["Valor"]])
+    yyyymm = as.integer(raw[["anomesfinaltrimmovel"]]),
+    ipca_index = as.numeric(raw[["ipca100dez1993"]])
   )
   out <- out[!is.na(yyyymm) & !is.na(ipca_index)]
   data.table::setkey(out, yyyymm)
