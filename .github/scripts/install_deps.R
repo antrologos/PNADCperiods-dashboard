@@ -14,6 +14,15 @@ PKGS <- c("PNADCperiods", "qs2", "jsonlite", "data.table",
 # RSPM Linux noble binary repo (ubuntu-latest = noble in 2026).
 RSPM <- "https://packagemanager.posit.co/cran/__linux__/noble/latest"
 
+# TEMPORARY: packages sourced from GitHub instead of RSPM.
+#
+# IBGE put apisidra.ibge.gov.br behind a Cloudflare challenge in September
+# 2026, which broke every SIDRA fetch in PNADCperiods 0.1.2 (the version on
+# CRAN). The fix -- fetching through the aggregated-data API v3 -- lives on
+# the dev branch and ships in 0.1.3. Drop this and the MIN_VERSIONS bump
+# back to RSPM once 0.1.3 is on CRAN.
+GITHUB_PKGS <- c(PNADCperiods = "antrologos/PNADCperiods@dev")
+
 lib <- Sys.getenv("R_LIBS_USER")
 if (lib == "") stop("R_LIBS_USER must be set by the workflow")
 dir.create(lib, showWarnings = FALSE, recursive = TRUE)
@@ -25,9 +34,9 @@ already <- rownames(installed.packages(lib.loc = lib))
 missing <- setdiff(PKGS, already)
 
 # Minimum required versions. Force upgrade when the cached lib is too
-# old (e.g. cache pinned PNADCperiods 0.1.1 while CRAN now ships 0.1.2;
-# the trailing-NA mask the dashboard relies on landed in 0.1.2).
-MIN_VERSIONS <- list(PNADCperiods = "0.1.2")
+# old (e.g. cache pinned PNADCperiods 0.1.2 while the SIDRA v3 migration
+# the daily fetch now depends on only landed in 0.1.3).
+MIN_VERSIONS <- list(PNADCperiods = "0.1.3")
 upgrade <- character(0)
 for (p in names(MIN_VERSIONS)) {
   if (p %in% already) {
@@ -41,10 +50,28 @@ for (p in names(MIN_VERSIONS)) {
 }
 
 to_install <- unique(c(missing, upgrade))
-if (length(to_install)) {
-  cat("Installing:", paste(to_install, collapse = ", "), "\n")
-  install.packages(to_install, repos = RSPM, lib = lib, Ncpus = 2)
-} else {
+from_github <- intersect(to_install, names(GITHUB_PKGS))
+from_rspm   <- setdiff(to_install, from_github)
+
+if (length(from_rspm)) {
+  cat("Installing from RSPM:", paste(from_rspm, collapse = ", "), "\n")
+  install.packages(from_rspm, repos = RSPM, lib = lib, Ncpus = 2)
+}
+
+if (length(from_github)) {
+  if (!requireNamespace("remotes", quietly = TRUE)) {
+    install.packages("remotes", repos = RSPM, lib = lib, Ncpus = 2)
+  }
+  for (p in from_github) {
+    cat("Installing from GitHub:", p, "<-", GITHUB_PKGS[[p]], "\n")
+    # Dependencies still come from the RSPM binaries; only the package
+    # itself is built from source, and it has no compiled code.
+    remotes::install_github(GITHUB_PKGS[[p]], lib = lib, repos = RSPM,
+                            upgrade = "never", dependencies = TRUE)
+  }
+}
+
+if (!length(to_install)) {
   cat("All packages already cached at required versions.\n")
 }
 
